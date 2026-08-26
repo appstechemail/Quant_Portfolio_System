@@ -713,13 +713,11 @@ def _create_alpha(
             "contain canonical 'Proba'."
         )
 
-    probability = pd.to_numeric(
-        out["Proba"],
-        errors="coerce",
-    )
-
     probability = (
-        probability
+        pd.to_numeric(
+            out["Proba"],
+            errors="coerce",
+        )
         .replace(
             [
                 np.inf,
@@ -727,11 +725,23 @@ def _create_alpha(
             ],
             np.nan,
         )
-        .clip(
-            lower=0.0,
-            upper=1.0,
-        )
     )
+
+    if probability.isna().any():
+        raise ValueError(
+            "CRITICAL: Canonical Proba contains "
+            "NaN/invalid values."
+        )
+
+    if (
+        (probability < 0.0)
+        |
+        (probability > 1.0)
+    ).any():
+        raise ValueError(
+            "CRITICAL: Canonical Proba contains "
+            "values outside [0, 1]."
+        )
 
     # ========================================================
     # BACKTEST PROBABILITY DISTRIBUTION DIAGNOSTIC
@@ -2685,7 +2695,9 @@ def run_backtest(
     Parameters
     ----------
     proba :
-        Model probability array or continuous alpha.
+    Canonical Alpha Engine BUY probability array.
+    This must be the final probability after the
+    Alpha Engine's Meta / Regime / Volatility processing.
 
     X_test :
         Test feature matrix.
