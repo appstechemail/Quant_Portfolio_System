@@ -2648,6 +2648,73 @@ def run_backtest(
     print("📊 BACKTEST STARTED")
     print("=" * 72)
 
+    # ==========================================================
+    # CANONICAL BACKTEST PROBABILITY CONTRACT
+    # ==========================================================
+    #
+    # `proba` is the FINAL probability produced by the Alpha
+    # Engine after:
+    #
+    #   Meta Model
+    #   Regime Filter
+    #   Volatility Filter
+    #
+    # The backtest must NOT reconstruct or replace probability
+    # using:
+    #
+    #   ensemble_proba
+    #   Prediction_Alpha
+    #   Alpha_Score
+    #   Final_Score
+    #   Signal
+    #
+    # Cross-sectional ranking is allowed later, but it must rank
+    # this canonical probability rather than create a new one.
+    # ==========================================================
+
+    if proba is None:
+        raise ValueError(
+            "CRITICAL: Backtest received None as canonical probability."
+        )
+
+    proba = np.asarray(proba, dtype=float).reshape(-1)
+
+    if len(proba) != len(meta_test):
+        raise ValueError(
+            "CRITICAL: Backtest probability alignment failure: "
+            f"proba={len(proba)}, "
+            f"meta_test={len(meta_test)}"
+        )
+
+    if len(proba) != len(X_test):
+        raise ValueError(
+            "CRITICAL: Backtest probability/X_test alignment failure: "
+            f"proba={len(proba)}, "
+            f"X_test={len(X_test)}"
+        )
+
+    if np.isnan(proba).any():
+        raise ValueError(
+            "CRITICAL: Backtest canonical probability contains NaN."
+        )
+
+    if np.isinf(proba).any():
+        raise ValueError(
+            "CRITICAL: Backtest canonical probability contains "
+            "infinite values."
+        )
+
+    if (
+        (proba < 0.0).any()
+        or (proba > 1.0).any()
+    ):
+        raise ValueError(
+            "CRITICAL: Backtest canonical probability contains "
+            "values outside [0, 1]."
+        )
+
+    canonical_proba = proba.copy()
+
     # ========================================================
     # 1. INPUT VALIDATION
     # ========================================================
