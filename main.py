@@ -1004,8 +1004,16 @@ meta_y_test = (
 )
 
 meta_test = (
-    meta.loc[test_mask]
+    data.loc[
+        test_mask,
+        [
+            "Date",
+            "Company",
+            "Market_Regime",
+        ],
+    ]
     .copy()
+    .reset_index(drop=True)
 )
 
 # ==========================================================
