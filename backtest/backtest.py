@@ -853,6 +853,18 @@ def _create_alpha(
     out["Probability"] = probability
 
     # ========================================================
+    # 3A CANONICAL PROBABILITY IMMUTABILITY
+    # ========================================================
+
+    canonical_probability = (
+        probability
+        .to_numpy(
+            dtype=float,
+            copy=True,
+        )
+    )
+
+    # ========================================================
     # 4. EXPLICIT ALPHA CONTRACT
     # ========================================================
     #
@@ -1101,6 +1113,27 @@ def _create_alpha(
 
     print("=" * 64)
 
+    # ========================================================
+    # CANONICAL PROBABILITY INTEGRITY CHECK
+    # ========================================================
+
+    final_probability = (
+        out["Prediction_Prob"]
+        .to_numpy(
+            dtype=float,
+            copy=False,
+        )
+    )
+
+    if not np.array_equal(
+        canonical_probability,
+        final_probability,
+    ):
+        raise ValueError(
+            "CRITICAL: Canonical Prediction_Prob "
+            "was modified during alpha construction."
+        )
+
     return out
 
 
@@ -1294,16 +1327,16 @@ def _cross_sectional_signal(
     # Canonical probability / confidence
     # --------------------------------------------------------
 
-    if "Probability" not in out.columns:
+    if "Prediction_Prob" not in out.columns:
 
         raise ValueError(
-            "CRITICAL: Probability column missing "
-            "before cross-sectional signal generation."
+            "CRITICAL: Canonical Prediction_Prob column "
+            "missing before cross-sectional signal generation."
         )
 
-    out["Probability"] = (
+    out["Prediction_Prob"] = (
         pd.to_numeric(
-            out["Probability"],
+            out["Prediction_Prob"],
             errors="coerce",
         )
         .replace(
@@ -1313,20 +1346,46 @@ def _cross_sectional_signal(
             ],
             np.nan,
         )
-        .clip(
-            lower=0.0,
-            upper=1.0,
-        )
     )
 
+    if out["Prediction_Prob"].isna().any():
+
+        raise ValueError(
+            "CRITICAL: Prediction_Prob contains NaN/inf "
+            "before cross-sectional signal generation."
+        )
+
+    if (
+        (out["Prediction_Prob"] < 0.0)
+        |
+        (out["Prediction_Prob"] > 1.0)
+    ).any():
+
+        raise ValueError(
+            "CRITICAL: Prediction_Prob contains values "
+            "outside [0, 1]."
+        )
+
+    # --------------------------------------------------------
+    # Canonical probability alias.
+    # --------------------------------------------------------
+
+    out["Probability"] = (
+        out["Prediction_Prob"]
+    )
+
+    # --------------------------------------------------------
+    # Alpha is derived ONLY from canonical probability.
+    # --------------------------------------------------------
+
     out["Alpha"] = (
-        out["Probability"]
+        out["Prediction_Prob"]
         - NEUTRALITY
     )
 
     out["Confidence"] = (
         np.abs(
-            out["Probability"]
+            out["Prediction_Prob"]
             - NEUTRALITY
         )
         * 2.0
@@ -2991,7 +3050,55 @@ def run_backtest(
     # 6. UNIQUE PANEL
     # ========================================================
 
-    before = len(df)
+    duplicate_mask = df.duplicated(
+        [
+            "Date",
+            "Company",
+        ],
+        keep=False,
+    )
+
+    duplicate_rows = int(
+        duplicate_mask.sum()
+    )
+
+    if duplicate_rows > 0:
+
+        duplicate_keys = (
+            df.loc[
+                duplicate_mask,
+                [
+                    "Date",
+                    "Company",
+                ],
+            ]
+            .drop_duplicates()
+            .sort_values(
+                [
+                    "Date",
+                    "Company",
+                ]
+            )
+        )
+
+        logger.error(
+            "CRITICAL: Duplicate prediction keys detected "
+            "after market-data merge: %d rows",
+            duplicate_rows,
+        )
+
+        logger.error(
+            "Duplicate keys:\n%s",
+            duplicate_keys.head(20).to_string(
+                index=False
+            ),
+        )
+
+        raise ValueError(
+            "CRITICAL: Backtest prediction panel contains "
+            "duplicate (Date, Company) keys after merge. "
+            "No prediction rows will be silently removed."
+        )
 
     df = (
         df
@@ -3001,28 +3108,8 @@ def run_backtest(
                 "Company",
             ]
         )
-        .drop_duplicates(
-            [
-                "Date",
-                "Company",
-            ],
-            keep="first",
-        )
         .reset_index(drop=True)
     )
-
-    duplicate_rows_removed = (
-        before
-        -
-        len(df)
-    )
-
-    if duplicate_rows_removed > 0:
-
-        print(
-            "⚠ Duplicate prediction keys removed: "
-            f"{duplicate_rows_removed:,}"
-        )
 
     # ========================================================
     # 7. ALPHA
