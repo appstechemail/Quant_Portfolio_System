@@ -329,6 +329,60 @@ def _prepare_prediction_frame(
 
     df["Proba"] = proba_arr
 
+    # ========================================================
+    # CANONICAL PROBABILITY CONTRACT
+    # ========================================================
+    #
+    # `Proba` is the ONLY probability consumed by the
+    # backtest engine.
+    #
+    # The caller is responsible for providing the final
+    # Alpha Engine probability.
+    #
+    # The backtest must NOT reconstruct probability from:
+    #   - Prediction_Alpha
+    #   - Alpha_Score
+    #   - Final_Score
+    #   - Signal
+    #   - ensemble probability
+    #
+    # ========================================================
+
+    df["Proba"] = (
+        pd.to_numeric(
+            df["Proba"],
+            errors="coerce",
+        )
+        .replace(
+            [
+                np.inf,
+                -np.inf,
+            ],
+            np.nan,
+        )
+    )
+
+    if df["Proba"].isna().any():
+        raise ValueError(
+            "CRITICAL: Canonical backtest probability "
+            "contains NaN/inf values."
+        )
+
+    if (
+        (df["Proba"] < 0.0)
+        | (df["Proba"] > 1.0)
+    ).any():
+
+        raise ValueError(
+            "CRITICAL: Canonical backtest probability "
+            "contains values outside [0, 1]."
+        )
+
+    df["Proba"] = df["Proba"].clip(
+        0.0,
+        1.0,
+    )
+
     # --------------------------------------------------------
     # Recover keys from X_test if necessary.
     # --------------------------------------------------------
@@ -751,6 +805,28 @@ def _create_alpha(
 
     print(
         "=" * 64
+    )
+
+    print(
+        "\nCANONICAL SIGNAL INTEGRITY"
+    )
+
+    print(
+        f"Probability source : Proba"
+    )
+
+    print(
+        f"Neutrality         : {neutrality:.6f}"
+    )
+
+    print(
+        f"Alpha mean         : "
+        f"{(probability - neutrality).mean():.6f}"
+    )
+
+    print(
+        f"Confidence mean    : "
+        f"{((probability - neutrality).abs() * 2).mean():.6f}"
     )
 
     # ========================================================
@@ -1313,6 +1389,20 @@ def _cross_sectional_signal(
         out["Probability"]
         > NEUTRALITY
     )
+
+    if "Meta_Pass" in out.columns:
+        out["Eligible"] &= (
+            out["Meta_Pass"]
+            .fillna(False)
+            .astype(bool)
+        )
+
+    if "Volatility_Pass" in out.columns:
+        out["Eligible"] &= (
+            out["Volatility_Pass"]
+            .fillna(False)
+            .astype(bool)
+        )
 
     out.loc[
         out["Confidence"] < MIN_CONFIDENCE,
