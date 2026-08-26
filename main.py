@@ -2262,29 +2262,12 @@ regime_multiplier = np.ones(
     dtype=float,
 )
 
-regime_multiplier[
-    test_regimes == "BULL"
-] = 1.00
-
-regime_multiplier[
-    test_regimes == "SIDEWAYS"
-] = 0.85
-
-regime_multiplier[
-    test_regimes == "BULL_VOLATILE"
-] = 0.75
-
-regime_multiplier[
-    test_regimes == "SIDEWAYS_VOLATILE"
-] = 0.60
-
-regime_multiplier[
-    test_regimes == "BEAR"
-] = 0.50
-
-regime_multiplier[
-    test_regimes == "BEAR_VOLATILE"
-] = 0.25
+regime_multiplier[test_regimes == "BULL"] = 1.00
+regime_multiplier[test_regimes == "SIDEWAYS"] = 0.85
+regime_multiplier[test_regimes == "BULL_VOLATILE"] = 0.75
+regime_multiplier[test_regimes == "SIDEWAYS_VOLATILE"] = 0.60
+regime_multiplier[test_regimes == "BEAR"] = 0.50
+regime_multiplier[test_regimes == "BEAR_VOLATILE"] = 0.25
 
 # ----------------------------------------------------------
 # Regime validity
