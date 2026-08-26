@@ -728,6 +728,23 @@ extra_cols = [
 #
 # ======================================================
 
+# ==========================================================
+# CANONICAL SOURCE ROW ID
+# ==========================================================
+#
+# Preserve the exact original final_df row identity.
+#
+# This ID is used later to map X_test/meta_test probabilities
+# back to the correct Date/Company rows in final_df.
+#
+# Do NOT rely on the reset positional index of `data`.
+# ==========================================================
+
+source_row_id = np.arange(
+    len(final_df),
+    dtype=np.int64,
+)
+
 data = (
     final_df[
         ["Date", "Company"]
@@ -735,7 +752,12 @@ data = (
         + extra_cols
     ]
     .copy()
-    .reset_index(drop=True)
+)
+
+data["_source_row_id"] = source_row_id
+
+data = data.reset_index(
+    drop=True
 )
 
 data["Date"] = pd.to_datetime(
@@ -978,6 +1000,35 @@ meta_test = (
     meta.loc[test_mask]
     .copy()
 )
+
+# ==========================================================
+# CANONICAL TEST SOURCE ROW IDS
+# ==========================================================
+
+test_source_row_ids = (
+    data.loc[
+        test_mask,
+        "_source_row_id"
+    ]
+    .to_numpy(
+        dtype=np.int64
+    )
+)
+
+if len(test_source_row_ids) != len(X_test):
+    raise RuntimeError(
+        "CRITICAL: Test source-row alignment failure: "
+        f"source_ids={len(test_source_row_ids)}, "
+        f"X_test={len(X_test)}"
+    )
+
+if len(np.unique(test_source_row_ids)) != len(
+    test_source_row_ids
+):
+    raise RuntimeError(
+        "CRITICAL: Duplicate source row IDs detected "
+        "in test panel."
+    )
 
 # ----------------------------------------------------------
 # 7. Build explicit train/test universe diagnostics
@@ -2541,53 +2592,117 @@ if (
 
 
 # ============================================================
-# CONSTRUCT CANONICAL BACKTEST PANEL
+# 6. CONSTRUCT CANONICAL BACKTEST PANEL
 # ============================================================
 #
-# final_df = 78,406 rows
-# test panel = 20,479 rows
+# IMPORTANT:
+# X_test/meta_test are derived from `data`.
+# `data` has its own reset index.
 #
-# The backtest must receive ONLY the test panel.
+# Therefore DO NOT use:
+#
+#     final_df.loc[X_test.index]
+#
+# because that index belongs to `data`, not necessarily
+# to the original final_df.
+#
+# `_source_row_id` is the only authoritative mapping.
 # ============================================================
 
+if len(test_source_row_ids) != expected_test_rows:
+    raise ValueError(
+        "CRITICAL: Test source-row count mismatch: "
+        f"expected={expected_test_rows}, "
+        f"actual={len(test_source_row_ids)}"
+    )
 
-# ------------------------------------------------------------
-# 6. Identify the test rows from final_df
-# ------------------------------------------------------------
+if (
+    test_source_row_ids.min() < 0
+    or
+    test_source_row_ids.max() >= len(final_df)
+):
+    raise ValueError(
+        "CRITICAL: Test source-row IDs contain values "
+        "outside final_df bounds."
+    )
 
-if len(final_df) == len(meta_test):
-    # Defensive case: final_df is already the test panel.
-    backtest_df = final_df.copy()
+backtest_df = (
+    final_df
+    .iloc[test_source_row_ids]
+    .copy()
+)
 
-else:
+backtest_df = (
+    backtest_df
+    .reset_index(drop=True)
+)
 
-    # --------------------------------------------------------
-    # Preferred alignment: use X_test index
-    # --------------------------------------------------------
-    #
-    # X_test is created from the canonical test split, so its
-    # index is the safest reference for selecting the original
-    # rows from final_df.
-    #
-    # --------------------------------------------------------
+# ============================================================
+# CANONICAL DATE / COMPANY ALIGNMENT CHECK
+# ============================================================
 
-    test_index = getattr(X_test, "index", None)
+expected_meta = (
+    meta_test[
+        ["Date", "Company"]
+    ]
+    .copy()
+    .reset_index(drop=True)
+)
 
-    if test_index is None:
-        raise ValueError(
-            "CRITICAL: X_test does not expose an index required "
-            "for canonical backtest alignment."
-        )
+actual_meta = (
+    backtest_df[
+        ["Date", "Company"]
+    ]
+    .copy()
+    .reset_index(drop=True)
+)
 
-    missing_test_index = test_index.difference(final_df.index)
+expected_meta["Date"] = pd.to_datetime(
+    expected_meta["Date"],
+    errors="coerce",
+)
 
-    if len(missing_test_index) > 0:
-        raise ValueError(
-            "CRITICAL: Test index alignment failure. "
-            f"Missing test rows in final_df={len(missing_test_index)}"
-        )
+actual_meta["Date"] = pd.to_datetime(
+    actual_meta["Date"],
+    errors="coerce",
+)
 
-    backtest_df = final_df.loc[test_index].copy()
+expected_meta["Company"] = (
+    expected_meta["Company"]
+    .astype(str)
+    .str.strip()
+)
+
+actual_meta["Company"] = (
+    actual_meta["Company"]
+    .astype(str)
+    .str.strip()
+)
+
+if not expected_meta.equals(actual_meta):
+    mismatch_mask = (
+        expected_meta["Date"]
+        != actual_meta["Date"]
+    ) | (
+        expected_meta["Company"]
+        != actual_meta["Company"]
+    )
+
+    mismatch_count = int(
+        mismatch_mask.sum()
+    )
+
+    raise ValueError(
+        "CRITICAL: Canonical Date/Company alignment "
+        "failure between meta_test and backtest_df. "
+        f"Mismatched rows={mismatch_count}"
+    )
+
+print(
+    f"✓ Canonical Date/Company alignment PASS | "
+    f"Rows={len(backtest_df):,}"
+)
+
 
 
 # ------------------------------------------------------------
