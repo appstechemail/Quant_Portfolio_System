@@ -255,6 +255,13 @@ SELECTED_MODELS = CONFIG["MODEL"].get(
     ["xgb", "lgb", "cat"]
 )
 
+NEUTRALITY = float(
+    CONFIG["BACKTEST"].get(
+        "NEUTRALITY",
+        0.50,
+    )
+)
+
 # INITIALIZE
 tracker = AlphaStageTracker()
 
@@ -1872,10 +1879,14 @@ logger.info(
 # APPLY META FILTER
 # ----------------------------------------------------------
 
+meta_pass = (
+    meta_proba > META_THRESHOLD
+)
+
 final_proba = np.where(
-    meta_proba > META_THRESHOLD,
+    meta_pass,
     ensemble_proba,
-    0.0,
+    NEUTRALITY,
 )
 
 # ================================
@@ -2147,6 +2158,8 @@ meta_pass = (
 # For Integration of Alpha Stage
 meta_df = meta_test.copy()
 
+meta_df["Meta_Proba"] = meta_proba
+meta_df["Meta_Pass"] = meta_pass
 meta_df["Probability"] = final_proba
 
 tracker.add_stage(
@@ -2169,7 +2182,7 @@ logger.info(
     final_df["Company"].nunique()
 )
 # ----------------------------------------------------------
-# REGIME FILTER
+# REGIME EXPOSURE DIAGNOSTICS
 # ----------------------------------------------------------
 
 print(
@@ -2188,11 +2201,60 @@ allowed_regimes = [
 # REGIME ADJUSTMENT
 # ----------------------------------------------------------
 #
-# Do not convert valid BUY probabilities to zero solely
-# because of market regime.
+# CANONICAL ALPHA CONTRACT
 #
-# Regime is a risk/exposure modifier.
-# Portfolio construction / risk engine can reduce exposure.
+# Do not convert a valid BUY probability to zero solely
+# because of the market regime.
+#
+# The Alpha Engine probability remains the canonical
+# probability.
+#
+# Regime is a RISK / EXPOSURE MODIFIER only.
+#
+# Therefore:
+#
+#     final_proba
+#         ↓
+#     remains unchanged
+#
+#     regime_exposure
+#         ↓
+#     is passed downstream
+#
+# Portfolio construction / risk engine may reduce
+# exposure using this modifier.
+#
+# IMPORTANT:
+# ----------------------------------------------------------
+# DO NOT do:
+#
+#     final_proba[test_regimes == "BEAR"] = 0
+#
+# DO NOT do:
+#
+#     final_proba *= regime_multiplier
+#
+# DO NOT use regime to destroy the canonical probability.
+#
+# The canonical probability must remain the probability
+# produced by the Alpha Engine after Meta processing.
+# ----------------------------------------------------------
+
+test_regimes = (
+    meta_test["Market_Regime"]
+    .astype(str)
+    .fillna("SIDEWAYS")
+    .to_numpy()
+)
+
+# ----------------------------------------------------------
+# Regime exposure multipliers
+# ----------------------------------------------------------
+#
+# These values represent the maximum directional exposure
+# allowed downstream for each market regime.
+#
+# They DO NOT modify final_proba.
 # ----------------------------------------------------------
 
 regime_multiplier = np.ones(
@@ -2200,42 +2262,288 @@ regime_multiplier = np.ones(
     dtype=float,
 )
 
-regime_multiplier[test_regimes == "BULL"] = 1.00
-regime_multiplier[test_regimes == "SIDEWAYS"] = 0.85
-regime_multiplier[test_regimes == "BULL_VOLATILE"] = 0.75
-regime_multiplier[test_regimes == "SIDEWAYS_VOLATILE"] = 0.60
-regime_multiplier[test_regimes == "BEAR"] = 0.50
-regime_multiplier[test_regimes == "BEAR_VOLATILE"] = 0.25
+regime_multiplier[
+    test_regimes == "BULL"
+] = 1.00
 
-regime_exposure = regime_multiplier.copy()
+regime_multiplier[
+    test_regimes == "SIDEWAYS"
+] = 0.85
 
+regime_multiplier[
+    test_regimes == "BULL_VOLATILE"
+] = 0.75
+
+regime_multiplier[
+    test_regimes == "SIDEWAYS_VOLATILE"
+] = 0.60
+
+regime_multiplier[
+    test_regimes == "BEAR"
+] = 0.50
+
+regime_multiplier[
+    test_regimes == "BEAR_VOLATILE"
+] = 0.25
+
+# ----------------------------------------------------------
+# Regime validity
+# ----------------------------------------------------------
+#
+# A valid regime always has a positive exposure multiplier.
+# No probability is rejected here.
+# ----------------------------------------------------------
+
+regime_pass = (
+    regime_multiplier > 0.0
+)
+
+# ----------------------------------------------------------
+# Canonical regime exposure
+# ----------------------------------------------------------
+#
+# This is the ONLY regime-adjusted quantity.
+#
+# final_proba remains untouched.
+#
+# Downstream portfolio / risk engines may use:
+#
+#     final_proba
+#     regime_exposure
+#
+# to determine final position size.
+# ----------------------------------------------------------
+
+regime_exposure = (
+    regime_multiplier.copy()
+)
+
+# ----------------------------------------------------------
+# Defensive validation
+# ----------------------------------------------------------
+
+if len(regime_exposure) != len(final_proba):
+    raise ValueError(
+        "CRITICAL: Regime exposure alignment failure: "
+        f"final_proba={len(final_proba)}, "
+        f"regime_exposure={len(regime_exposure)}"
+    )
+
+if not np.isfinite(
+    regime_exposure
+).all():
+    raise ValueError(
+        "CRITICAL: Regime exposure contains "
+        "NaN or infinite values."
+    )
+
+if (
+    np.asarray(regime_exposure) < 0
+).any():
+    raise ValueError(
+        "CRITICAL: Regime exposure contains "
+        "negative values."
+    )
+
+# ----------------------------------------------------------
+# IMPORTANT CANONICAL PROBABILITY CHECK
+# ----------------------------------------------------------
+#
+# Regime adjustment must NOT change final_proba.
+#
+# Therefore we explicitly retain final_proba as the
+# canonical Alpha Engine probability.
+# ----------------------------------------------------------
+
+final_proba = np.asarray(
+    final_proba,
+    dtype=float,
+).reshape(-1)
+
+if not np.isfinite(
+    final_proba
+).all():
+    raise ValueError(
+        "CRITICAL: Canonical final_proba contains "
+        "NaN or infinite values after Regime processing."
+    )
+
+final_proba = np.clip(
+    final_proba,
+    0.0,
+    1.0,
+)
+
+# ----------------------------------------------------------
 # For Integration with Alpha Stage
-regime_df = meta_df.copy()
+# ----------------------------------------------------------
+#
+# The REGIME stage records:
+#
+#     Probability      = canonical Alpha probability
+#     Regime_Exposure  = regime risk/exposure modifier
+#
+# Probability is intentionally NOT multiplied by the
+# regime multiplier.
+# ----------------------------------------------------------
 
-regime_df["Probability"] = final_proba
+regime_df = meta_test.copy()
+
+regime_df["Probability"] = (
+    final_proba
+)
+
+regime_df["Regime_Exposure"] = (
+    regime_exposure
+)
+
+regime_df["Regime_Pass"] = (
+    regime_pass
+)
+
+# ----------------------------------------------------------
+# Optional regime diagnostics
+# ----------------------------------------------------------
+
+regime_diagnostics = pd.DataFrame(
+    {
+        "Market_Regime": test_regimes,
+        "Regime_Exposure": regime_exposure,
+        "Regime_Pass": regime_pass,
+        "Probability": final_proba,
+    }
+)
+
+print(
+    "\n===== REGIME EXPOSURE DIAGNOSTICS ====="
+)
+
+print(
+    regime_diagnostics[
+        "Market_Regime"
+    ].value_counts()
+    .rename("Observations")
+)
+
+print(
+    "\nRegime Exposure:"
+)
+
+print(
+    regime_diagnostics
+    .groupby("Market_Regime")[
+        "Regime_Exposure"
+    ]
+    .first()
+    .sort_values(
+        ascending=False
+    )
+)
+
+print(
+    "\nMean Canonical Probability by Regime:"
+)
+
+print(
+    regime_diagnostics
+    .groupby("Market_Regime")[
+        "Probability"
+    ]
+    .mean()
+    .sort_values(
+        ascending=False
+    )
+)
+
+print(
+    "\nSignals with Positive Canonical Probability:",
+    int(
+        (
+            regime_diagnostics[
+                "Probability"
+            ] > 0
+        ).sum()
+    ),
+)
+
+print(
+    "Signals with Positive Regime Exposure:",
+    int(
+        regime_diagnostics[
+            "Regime_Pass"
+        ].sum()
+    ),
+)
+
+# ----------------------------------------------------------
+# Alpha Stage Tracker
+# ----------------------------------------------------------
 
 tracker.add_stage(
     AlphaStage.REGIME,
     regime_df
 )
 
+# ----------------------------------------------------------
+# IMPORTANT:
+# Do NOT report this as "signals after Regime Filter"
+# because Regime does not filter probabilities anymore.
+# ----------------------------------------------------------
+
 print(
-    "Signals after Regime Filter:",
-    (final_proba > 0).sum(),
+    "Signals entering downstream stages:",
+    int(
+        (
+            final_proba > 0
+        ).sum()
+    ),
+)
+
+print(
+    "Regime-adjusted exposure observations:",
+    int(
+        (
+            regime_exposure > 0
+        ).sum()
+    ),
 )
 
 logger.info("=" * 80)
-logger.info("BACKTEST DEBUG After - Regime Filter and Before Volatility Filter")
-logger.info("Rows after merge: %d", len(final_df))
+
+logger.info(
+    "BACKTEST DEBUG After - Regime Adjustment "
+    "and Before Volatility Filter"
+)
+
+logger.info(
+    "Rows after merge: %d",
+    len(final_df)
+)
 
 logger.info(
     "Unique Dates=%d | Companies=%d",
     final_df["Date"].nunique(),
-    final_df["Company"].nunique()
+    final_df["Company"].nunique(),
+)
+
+logger.info(
+    "Canonical Probability Mean=%.6f | "
+    "Min=%.6f | Max=%.6f",
+    float(final_proba.mean()),
+    float(final_proba.min()),
+    float(final_proba.max()),
+)
+
+logger.info(
+    "Regime Exposure Mean=%.6f | "
+    "Min=%.6f | Max=%.6f",
+    float(regime_exposure.mean()),
+    float(regime_exposure.min()),
+    float(regime_exposure.max()),
 )
 
 # ----------------------------------------------------------
-# VOLATILITY FILTER
+# VOLATILITY CONTROL DIAGNOSTICS
 # ----------------------------------------------------------
 
 print(
@@ -2467,18 +2775,22 @@ logger.info(
 
 logger.info("=" * 80)
 
-backtest_meta = meta_test.copy()
+backtest_meta = meta_test.copy().reset_index(drop=True)
 
 backtest_meta["Meta_Pass"] = (
     meta_pass
+)
+
+backtest_meta["Regime_Pass"] = (
+    regime_pass
 )
 
 backtest_meta["Volatility_Pass"] = (
     volatility_pass
 )
 
-backtest_meta["Regime_Exposure"] = (
-    regime_exposure
+backtest_meta["Regime_Multiplier"] = (
+    regime_multiplier
 )
 
 # ==========================================================
@@ -2770,9 +3082,9 @@ if (
 # ============================================================
 
 backtest_df["Prediction_Alpha"] = (
-    backtest_df["Prediction_Prob"] - 0.50
+    backtest_df["Prediction_Prob"]
+    - NEUTRALITY
 )
-
 
 # ============================================================
 # CANONICAL CONFIDENCE
@@ -2781,7 +3093,6 @@ backtest_df["Prediction_Alpha"] = (
 backtest_df["Confidence"] = (
     backtest_df["Prediction_Alpha"].abs() * 2.0
 )
-
 
 # ============================================================
 # CANONICAL ALPHA SIGNAL CONTRACT
