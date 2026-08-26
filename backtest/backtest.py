@@ -164,20 +164,6 @@ EXECUTION_LAG = int(
 
 
 # ============================================================
-# REGIME EXPOSURE
-# ============================================================
-
-REGIME_EXPOSURE = {
-    "BULL": 1.00,
-    "BULL_VOLATILE": 1.20,
-    "SIDEWAYS": 0.60,
-    "SIDEWAYS_VOLATILE": 0.30,
-    "BEAR": 0.15,
-    "BEAR_VOLATILE": 0.00,
-}
-
-
-# ============================================================
 # HELPERS
 # ============================================================
 
@@ -2051,31 +2037,80 @@ def _risk_adjust_position(
         )
 
     # --------------------------------------------------------
-    # Regime exposure
+    # REGIME EXPOSURE
+    # --------------------------------------------------------
+    #
+    # Regime is an exposure/risk modifier.
+    #
+    # IMPORTANT:
+    # Do NOT reconstruct regime exposure from Market_Regime.
+    #
+    # main.py is the canonical owner of the regime multiplier.
+    # It provides:
+    #
+    #     backtest_meta["Regime_Multiplier"]
+    #
+    # The backtest consumes that value only for position sizing.
+    #
+    # It MUST NOT modify:
+    #
+    #     Proba
+    #     Prediction_Prob
+    #     Prediction_Alpha
+    #     Alpha
+    #
     # --------------------------------------------------------
 
-    if (
-        USE_REGIME_EXPOSURE
-        and
-        "Market_Regime" in out.columns
-    ):
+    if USE_REGIME_EXPOSURE:
 
-        out["Portfolio_Exposure"] = (
-            out["Market_Regime"]
-            .map(
-                REGIME_EXPOSURE
+        if "Regime_Multiplier" in out.columns:
+
+            regime_exposure = (
+                pd.to_numeric(
+                    out["Regime_Multiplier"],
+                    errors="coerce",
+                )
+                .replace(
+                    [
+                        np.inf,
+                        -np.inf,
+                    ],
+                    np.nan,
+                )
+                .fillna(1.0)
+                .clip(
+                    lower=0.0,
+                    upper=1.0,
+                )
             )
-            .fillna(1.0)
-        )
+
+        else:
+
+            # Backward-compatible fallback.
+            #
+            # This should normally NOT execute because main.py
+            # now supplies Regime_Multiplier explicitly.
+            regime_exposure = pd.Series(
+                1.0,
+                index=out.index,
+                dtype=float,
+            )
 
     else:
 
-        out["Portfolio_Exposure"] = 1.0
+        regime_exposure = pd.Series(
+            1.0,
+            index=out.index,
+            dtype=float,
+        )
+
+    out["Portfolio_Exposure"] = (
+        regime_exposure
+    )
 
     out["Position"] *= (
         out["Portfolio_Exposure"]
     )
-
     # --------------------------------------------------------
     # Gross exposure cap
     # --------------------------------------------------------
