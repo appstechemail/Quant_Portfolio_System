@@ -40,6 +40,8 @@ from sklearn.linear_model import (
     LogisticRegression,
 )
 
+from sklearn.impute import SimpleImputer
+
 # ==========================================================
 # CONFIGURATION
 # ==========================================================
@@ -924,6 +926,22 @@ X_train = (
 X_test = (
     X.loc[test_mask]
     .copy()
+)
+
+imputer = SimpleImputer(
+    strategy="median"
+)
+
+X_train = pd.DataFrame(
+    imputer.fit_transform(X_train),
+    columns=X_train.columns,
+    index=X_train.index,
+)
+
+X_test = pd.DataFrame(
+    imputer.transform(X_test),
+    columns=X_test.columns,
+    index=X_test.index,
 )
 
 if X_train.empty:
@@ -1844,6 +1862,11 @@ joblib.dump(
 )
 
 joblib.dump(
+    imputer,
+    "artifacts/imputer.pkl",
+)
+
+joblib.dump(
     models,
     "artifacts/models.pkl",
 )
@@ -2066,10 +2089,8 @@ logger.info(
 # META FILTER
 # ----------------------------------------------------------
 
-final_proba = np.where(
-    meta_proba >  thresholds,
-    ensemble_proba,
-    0.0,
+meta_pass = (
+    meta_proba > thresholds
 )
 
 # For Integration of Alpha Stage
@@ -2128,35 +2149,14 @@ regime_multiplier = np.ones(
     dtype=float,
 )
 
-regime_multiplier[
-    test_regimes == "BULL"
-] = 1.00
+regime_multiplier[test_regimes == "BULL"] = 1.00
+regime_multiplier[test_regimes == "SIDEWAYS"] = 0.85
+regime_multiplier[test_regimes == "BULL_VOLATILE"] = 0.75
+regime_multiplier[test_regimes == "SIDEWAYS_VOLATILE"] = 0.60
+regime_multiplier[test_regimes == "BEAR"] = 0.50
+regime_multiplier[test_regimes == "BEAR_VOLATILE"] = 0.25
 
-regime_multiplier[
-    test_regimes == "SIDEWAYS"
-] = 0.85
-
-regime_multiplier[
-    test_regimes == "BULL_VOLATILE"
-] = 0.75
-
-regime_multiplier[
-    test_regimes == "SIDEWAYS_VOLATILE"
-] = 0.60
-
-regime_multiplier[
-    test_regimes == "BEAR"
-] = 0.50
-
-regime_multiplier[
-    test_regimes == "BEAR_VOLATILE"
-] = 0.25
-
-final_proba = (
-    final_proba
-    *
-    regime_multiplier
-)
+regime_exposure = regime_multiplier.copy()
 
 # For Integration with Alpha Stage
 regime_df = meta_df.copy()
@@ -2247,11 +2247,7 @@ logger.info(
     (final_proba > 0).sum(),
 )
 
-final_proba = np.where(
-    vol_filter,
-    final_proba,
-    0.0,
-)
+volatility_pass = vol_filter.astype(bool)
 
 # For Integration of Alpha Stage
 volatility_df = regime_df.copy()
@@ -2420,10 +2416,24 @@ logger.info(
 
 logger.info("=" * 80)
 
+backtest_meta = meta_test.copy()
+
+backtest_meta["Meta_Pass"] = (
+    meta_pass
+)
+
+backtest_meta["Volatility_Pass"] = (
+    volatility_pass
+)
+
+backtest_meta["Regime_Exposure"] = (
+    regime_exposure
+)
+
 ensemble_bt = run_backtest(
-    proba=final_proba,
+    proba=ensemble_proba,
     X_test=X_test,
-    meta_test=meta_test,
+    meta_test=backtest_meta,
     final_df=final_df,
 )
 
