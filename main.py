@@ -3777,6 +3777,17 @@ institutional_result = (
     )
 )
 
+print(
+    "\nAnalytics Error:"
+)
+
+print(
+    institutional_result
+    .context
+    .shared_objects
+    .get("analytics_error")
+)
+
 
 print(
     "\nRunning Institutional Alpha Diagnostics"
