@@ -39,6 +39,15 @@ from typing import (
 
 import uuid
 
+from src.portfolio.construction.attribution import (
+    AttributionMetadata, 
+    create_attribution_engine
+)
+
+from config.config import CONFIG 
+
+portfolio_value=CONFIG["PORTFOLIO"]["AUM"]
+
 # ============================================================
 # THIRD PARTY
 # ============================================================
@@ -6618,15 +6627,20 @@ class InstitutionalPortfolioPipeline:
             return result
 
         except Exception as exc:
-
             logger.exception(
                 "Analytics stage failed: %s",
                 exc,
             )
 
+            error = {
+                "stage": "analytics",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
+
             context.shared_objects[
                 "analytics_error"
-            ] = str(exc)
+            ] = error
 
             context.shared_objects[
                 "analytics_runtime_seconds"
@@ -6637,6 +6651,21 @@ class InstitutionalPortfolioPipeline:
 
             return None
 
+    # def run_attribution_stage(
+    #     self,
+    #     *,
+    #     context,
+    #     inputs,
+    #     portfolio_output,
+    #     rebalance_output,
+    #     execution_output,
+    #     analytics_result,
+    # ):
+    #     if not self.config.run_attribution:
+    #         return None
+
+    #     ...
+
     # --------------------------------
 
     def _build_analytics_portfolio(
@@ -6644,6 +6673,7 @@ class InstitutionalPortfolioPipeline:
         *,
         inputs: PipelineInput,
         portfolio_result: Any,
+        portfolio_value: float | None = None,
     ) -> pd.DataFrame:
 
         weights = (
@@ -6682,10 +6712,8 @@ class InstitutionalPortfolioPipeline:
         )
 
         portfolio["Market_Value"] = (
-            portfolio["Position_Weight"]
-            .abs()
-            *
-            portfolio["Close"].fillna(0.0)
+            portfolio["Position_Weight"].abs()
+            * portfolio_value
         )
 
         volumes = (
@@ -7163,21 +7191,28 @@ class InstitutionalPortfolioPipeline:
         # 1. Check PipelineInput directly
         # ----------------------------------
 
-        factor_exposures = getattr(
+        factor_data = getattr(
             inputs,
-            "factor_exposures",
+            "factor_data",
             None,
         )
 
-        if (
-            factor_exposures is not None
-            and isinstance(
-                factor_exposures,
-                pd.DataFrame,
+        if factor_data is not None:
+
+            factor_exposures = getattr(
+                factor_data,
+                "factor_exposures",
+                None,
             )
-            and not factor_exposures.empty
-        ):
-            return factor_exposures.copy()
+
+            if (
+                isinstance(
+                    factor_exposures,
+                    pd.DataFrame,
+                )
+                and not factor_exposures.empty
+            ):
+                return factor_exposures.copy()
 
         # ----------------------------------
         # 2. Check nested market-data object
