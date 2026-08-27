@@ -1841,61 +1841,6 @@ meta_proba = (
     )[:, 1]
 )
 
-# ----------------------------------------------------------
-# BUILD ENSEMBLE
-# ----------------------------------------------------------
-
-signals = []
-
-for values in probas.values():
-
-    arr = np.asarray(values)
-
-    if len(arr.shape) > 1:
-
-        arr = arr[:, 1]
-
-    signals.append(arr)
-
-signals = np.column_stack(
-    signals
-)
-
-ensemble_weights = (
-    np.ones(
-        signals.shape[1]
-    )
-    /
-    signals.shape[1]
-)
-
-ensemble_proba = np.dot(
-    signals,
-    ensemble_weights,
-)
-
-logger.info("=" * 80)
-logger.info("BACKTEST DEBUG Before Meta Filter")
-logger.info("Rows after merge: %d", len(final_df))
-
-logger.info(
-    "Unique Dates=%d | Companies=%d",
-    final_df["Date"].nunique(),
-    final_df["Company"].nunique()
-)
-# ----------------------------------------------------------
-# APPLY META FILTER
-# ----------------------------------------------------------
-
-meta_pass = (
-    meta_proba > META_THRESHOLD
-)
-
-final_proba = np.where(
-    meta_pass,
-    ensemble_proba,
-    NEUTRALITY,
-)
 
 # ================================
 
@@ -2161,6 +2106,33 @@ logger.info(
 
 meta_pass = (
     meta_proba > thresholds
+)
+
+# ----------------------------------------------------------
+# CANONICAL FINAL PROBABILITY
+# ----------------------------------------------------------
+#
+# This is the ONLY place where final_proba is created.
+#
+# Flow:
+#
+# weighted ensemble
+#        ↓
+# ensemble_proba
+#        ↓
+# meta model
+#        ↓
+# regime-specific meta threshold
+#        ↓
+# final_proba
+#
+# final_proba is the canonical Alpha Engine probability.
+# ----------------------------------------------------------
+
+final_proba = np.where(
+    meta_pass,
+    ensemble_proba,
+    NEUTRALITY,
 )
 
 # For Integration of Alpha Stage
