@@ -3254,16 +3254,22 @@ class MainPipelineAdapter:
 
         if latest_universe is not None:
 
+            forecast_columns = [
+                "Ticker",
+                "Company",
+                "Probability",
+                "Confidence",
+                "Expected_Return",
+            ]
+
+            available = [
+                c for c in forecast_columns
+                if c in latest_universe.columns
+            ]
+
             expected_returns = (
-                latest_universe[
-                    ["Company", "Probability", "Confidence"]
-                ]
+                latest_universe[available]
                 .copy()
-                .rename(
-                    columns={
-                        "Prediction_Prob": "ensemble_score"
-                    }
-                )
             )
 
         return ForecastInput(
@@ -3524,7 +3530,12 @@ class MainPipelineAdapter:
             )
         )
 
-        portfolio_data = PortfolioInput()
+        portfolio_data = (
+            MainPipelineAdapter
+            .build_portfolio_input(
+                portfolio
+            )
+        )
 
         liquidity_data = (
             MainPipelineAdapter
