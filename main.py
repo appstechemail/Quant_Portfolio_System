@@ -1854,15 +1854,15 @@ logger.info(
     final_df["Company"].nunique()
 )
 
-print(
-    "\nSignals after meta filter:",
-    (final_proba > 0).sum(),
+logger.info(
+    f"Meta-positive observations: "
+    f"{(meta_proba > META_THRESHOLD).sum()}"
 )
 
 print(
-    "Average signal:",
+    "Average Meta:",
     round(
-        final_proba.mean(),
+        meta_proba.mean(),
         4,
     ),
 )
