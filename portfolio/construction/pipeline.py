@@ -6695,6 +6695,43 @@ class InstitutionalPortfolioPipeline:
                 "Market prices unavailable for analytics."
             )
 
+        # ----------------------------------------------------------
+        # RESOLVE PORTFOLIO VALUE
+        # ----------------------------------------------------------
+        #
+        # Analytics requires a numeric portfolio value to convert
+        # portfolio weights into market values.
+        #
+        # If no portfolio value is explicitly supplied, use the
+        # institutional default configured by the pipeline.
+        # ----------------------------------------------------------
+
+        if portfolio_value is None:
+            portfolio_value = 10_000_000.0
+
+        try:
+            portfolio_value = float(portfolio_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid portfolio_value: {portfolio_value!r}"
+            ) from exc
+
+        if not pd.isfinite(portfolio_value):
+            raise ValueError(
+                f"portfolio_value must be finite, got "
+                f"{portfolio_value!r}"
+            )
+
+        if portfolio_value <= 0:
+            raise ValueError(
+                f"portfolio_value must be greater than zero, got "
+                f"{portfolio_value!r}"
+            )
+
+        # ----------------------------------------------------------
+        # LATEST PRICES
+        # ----------------------------------------------------------
+
         latest_prices = (
             prices
             .sort_index()
@@ -6711,20 +6748,28 @@ class InstitutionalPortfolioPipeline:
             .map(latest_prices)
         )
 
+        # ----------------------------------------------------------
+        # MARKET VALUE
+        # ----------------------------------------------------------
+        #
+        # Position weight × total portfolio value
+        # ----------------------------------------------------------
+
         portfolio["Market_Value"] = (
             portfolio["Position_Weight"].abs()
             * portfolio_value
         )
 
-        volumes = (
-            inputs.market_data.volumes
-        )
+        # ----------------------------------------------------------
+        # ADV
+        # ----------------------------------------------------------
+
+        volumes = inputs.market_data.volumes
 
         if (
             volumes is not None
             and not volumes.empty
         ):
-
             latest_volume = (
                 volumes
                 .sort_index()
@@ -6734,13 +6779,21 @@ class InstitutionalPortfolioPipeline:
             portfolio["ADV"] = (
                 portfolio["Ticker"]
                 .map(latest_volume)
-                *
-                portfolio["Close"]
+                * portfolio["Close"]
             )
-
         else:
-
             portfolio["ADV"] = 0.0
+
+        # ----------------------------------------------------------
+        # FINAL ANALYTICS VALIDATION
+        # ----------------------------------------------------------
+
+        if not portfolio["Market_Value"].map(
+            pd.api.types.is_number
+        ).all():
+            raise ValueError(
+                "Analytics portfolio contains invalid Market_Value."
+            )
 
         return portfolio
 
