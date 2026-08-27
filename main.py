@@ -4012,15 +4012,14 @@ print("=" * 60)
 # ----------------------------------------------------------
 
 institutional_report = (
-    full_report(
-
-        inputs=
-        pipeline_input,
-
-        metadata=
-        metadata,
-    )
+    institutional_result.report
 )
+
+if institutional_report is None:
+    raise RuntimeError(
+        "Institutional pipeline did not produce a report."
+    )
+
 
 print(
     "\nInstitutional Report Created"
