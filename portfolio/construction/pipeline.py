@@ -391,10 +391,9 @@ class ForecastInput:
     """
 
     alpha_scores: pd.DataFrame | None = None
-
     expected_returns: pd.DataFrame | None = None
-
     forecast_confidence: pd.DataFrame | None = None
+    candidate_weights: pd.Series | None = None
 
 
 # ============================================================
@@ -2524,6 +2523,93 @@ class EqualWeightOptimizer(
         )
 
 
+class AlphaCandidateOptimizer(
+    BaseOptimizerEngine
+):
+    """
+    Uses the Alpha Engine's selected candidate
+    weights as the institutional construction
+    starting portfolio.
+
+    This prevents the construction engine from
+    replacing the Alpha portfolio with the full
+    market universe.
+    """
+
+    def run(
+        self,
+        *,
+        inputs: PipelineInput,
+        forecast_output: ForecastStageOutput | None,
+        risk_output: RiskStageOutput | None,
+        constraint_output: ConstraintStageOutput | None,
+    ) -> TargetPortfolio:
+
+        candidate_weights = (
+            inputs
+            .forecast_data
+            .candidate_weights
+        )
+
+        if (
+            candidate_weights is None
+            or candidate_weights.empty
+        ):
+            raise ValueError(
+                "No Alpha candidate weights supplied."
+            )
+
+        weights = (
+            candidate_weights
+            .astype(float)
+            .replace(
+                [np.inf, -np.inf],
+                np.nan,
+            )
+            .dropna()
+        )
+
+        weights = (
+            weights[
+                weights.abs() > 0
+            ]
+        )
+
+        if weights.empty:
+            raise ValueError(
+                "Alpha candidate weights are empty."
+            )
+
+        # Long-only institutional normalization
+        weights = (
+            weights.clip(lower=0.0)
+        )
+
+        total = float(
+            weights.sum()
+        )
+
+        if total <= 0:
+            raise ValueError(
+                "Alpha candidate weights have zero total exposure."
+            )
+
+        weights = (
+            weights / total
+        )
+
+        return TargetPortfolio(
+            weights=weights,
+            diagnostics={
+                "optimizer":
+                    "alpha_candidate",
+                "assets":
+                    len(weights),
+                "source":
+                    "AlphaEngine",
+            },
+        )
+
 # ============================================================
 # OPTIMIZATION CONFIG
 # ============================================================
@@ -2906,7 +2992,9 @@ class OptimizationStageFactory:
         _ = config
         _ = pipeline_input
 
-        return OptimizationStageFactory.equal_weight()
+        return OptimizationStage(
+            optimizer=AlphaCandidateOptimizer()
+        )
 
 
 # ============================================================
@@ -5692,7 +5780,11 @@ class InstitutionalPortfolioReportBuilder:
             ),
 
             runtime_diagnostics={
-                "execution": execution_obj
+                # "analytics": analytics_result,
+                # "attribution": attribution_result,
+                # "stress_testing": stress_result,
+                # "monitoring": monitoring_result,
+                "execution": execution_obj,
             },
         )
 
