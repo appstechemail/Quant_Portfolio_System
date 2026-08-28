@@ -6703,11 +6703,11 @@ class InstitutionalPortfolioPipeline:
         # portfolio weights into market values.
         #
         # If no portfolio value is explicitly supplied, use the
-        # institutional default configured by the pipeline.
+        # institutional AUM configured in CONFIG.
         # ----------------------------------------------------------
 
         if portfolio_value is None:
-            portfolio_value = 10_000_000.0
+            portfolio_value = CONFIG["PORTFOLIO"]["AUM"]
 
         try:
             portfolio_value = float(portfolio_value)
@@ -6752,7 +6752,7 @@ class InstitutionalPortfolioPipeline:
         # MARKET VALUE
         # ----------------------------------------------------------
         #
-        # Position weight × total portfolio value
+        # Absolute position weight × total portfolio value.
         # ----------------------------------------------------------
 
         portfolio["Market_Value"] = (
