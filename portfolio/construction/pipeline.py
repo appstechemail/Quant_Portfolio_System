@@ -6716,7 +6716,7 @@ class InstitutionalPortfolioPipeline:
                 f"Invalid portfolio_value: {portfolio_value!r}"
             ) from exc
 
-        if not pd.isfinite(portfolio_value):
+        if not np.isfinite(portfolio_value):
             raise ValueError(
                 f"portfolio_value must be finite, got "
                 f"{portfolio_value!r}"
