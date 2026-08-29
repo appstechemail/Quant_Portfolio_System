@@ -5399,14 +5399,9 @@ class DiagnosticsStage:
                         else None
                     ),
 
-                    analytics_result=
-                    analytics_result,
-
-                    attribution_result=
-                    attribution_result,
-
-                    stress_result=
-                    stress_result,
+                    analytics_result = analytics_result,
+                    attribution_result = attribution_result,
+                    stress_result = stress_result,
                 )
             )
 
@@ -5669,32 +5664,16 @@ class InstitutionalPortfolioReportBuilder:
     @staticmethod
     def build(
         *,
-        metadata:
-        PortfolioBuilderMetadata,
-
-        forecast_result:
-        Any,
-
-        risk_result:
-        Any,
-
-        constraint_result:
-        Any,
-
-        optimization_result:
-        Any,
-
-        portfolio_result:
-        Any,
-
-        rebalance_result:
-        Any,
-
-        execution_result:
-        Any,
-
-        diagnostics_result:
-        Any,
+        metadata: PortfolioBuilderMetadata,
+        forecast_result: Any,
+        risk_result: Any,
+        constraint_result: Any,
+        optimization_result: Any,
+        portfolio_result: Any,
+        rebalance_result: Any,
+        execution_result: Any,
+        diagnostics_result: Any,
+        analytics_result=None,
     ) -> (InstitutionalPortfolioConstructionReport):
 
         portfolio_obj = None
@@ -5789,7 +5768,7 @@ class InstitutionalPortfolioReportBuilder:
             ),
 
             runtime_diagnostics={
-                # "analytics": analytics_result,
+                "analytics": analytics_result,
                 # "attribution": attribution_result,
                 # "stress_testing": stress_result,
                 # "monitoring": monitoring_result,
@@ -7477,6 +7456,7 @@ class InstitutionalPortfolioPipeline:
             )
         )
 
+
     # --------------------------------------------------------
     # MASTER RUN
     # --------------------------------------------------------
@@ -7488,18 +7468,18 @@ class InstitutionalPortfolioPipeline:
         analytics_result: Any = None,
         attribution_result: Any = None,
         stress_result: Any = None,
-    ) -> (
-        InstitutionalPipelineResult
-    ):
+    ) -> InstitutionalPipelineResult:
 
-        started_at = (
-            time.perf_counter()
-        )
+        started_at = time.perf_counter()
 
         context = PipelineContext(
             metadata=self.metadata,
-            config=self.config
+            config=self.config,
         )
+
+        # ----------------------------------------------------
+        # INITIAL SHARED OBJECTS
+        # ----------------------------------------------------
 
         context.shared_objects.update({
             "pipeline_input": inputs,
@@ -7508,24 +7488,18 @@ class InstitutionalPortfolioPipeline:
             "stress_result": stress_result,
         })
 
-        # ----------------------------------
-        # Forecast
-        # ----------------------------------
+        # ----------------------------------------------------
+        # FORECAST
+        # ----------------------------------------------------
 
-        forecast_output = (
-            self.run_forecast_stage(
-
-                context=
-                context,
-
-                inputs=
-                inputs,
-            )
+        forecast_output = self.run_forecast_stage(
+            context=context,
+            inputs=inputs,
         )
 
-        # ----------------------------------
-        # Risk
-        # ----------------------------------
+        # ----------------------------------------------------
+        # RISK
+        # ----------------------------------------------------
 
         risk_output = self.run_risk_stage(
             context=context,
@@ -7533,69 +7507,61 @@ class InstitutionalPortfolioPipeline:
             forecast_output=forecast_output,
         )
 
-        # ----------------------------------
-        # Constraints
-        # ----------------------------------
+        # ----------------------------------------------------
+        # CONSTRAINTS
+        # ----------------------------------------------------
 
-        constraint_output = (
-            self.run_constraint_stage(
-                context= context,
-                inputs= inputs,
-                forecast_output= forecast_output,
-                risk_output= risk_output,
-            )
+        constraint_output = self.run_constraint_stage(
+            context=context,
+            inputs=inputs,
+            forecast_output=forecast_output,
+            risk_output=risk_output,
         )
 
-        # ----------------------------------
-        # Optimization
-        # ----------------------------------
+        # ----------------------------------------------------
+        # OPTIMIZATION
+        # ----------------------------------------------------
 
-        optimization_output = (
-            self.run_optimization_stage(
-                context= context,
-                inputs= inputs,
-                forecast_output= forecast_output,
-                risk_output= risk_output,
-                constraint_output= constraint_output,
-            )
+        optimization_output = self.run_optimization_stage(
+            context=context,
+            inputs=inputs,
+            forecast_output=forecast_output,
+            risk_output=risk_output,
+            constraint_output=constraint_output,
         )
 
-        # ----------------------------------
-        # Portfolio
-        # ----------------------------------
+        # ----------------------------------------------------
+        # PORTFOLIO
+        # ----------------------------------------------------
 
-        portfolio_output = (
-            self.run_portfolio_stage(
-                context= context,
-                inputs= inputs,
-                optimization_output= optimization_output,
-            )
+        portfolio_output = self.run_portfolio_stage(
+            context=context,
+            inputs=inputs,
+            optimization_output=optimization_output,
         )
 
-        # ----------------------------------
-        # Rebalance
-        # ----------------------------------
+        # ----------------------------------------------------
+        # REBALANCE
+        # ----------------------------------------------------
 
-        rebalance_output = (
-            self.run_rebalance_stage(
-                context= context,
-                inputs= inputs,
-                portfolio_output= portfolio_output,
-            )
+        rebalance_output = self.run_rebalance_stage(
+            context=context,
+            inputs=inputs,
+            portfolio_output=portfolio_output,
         )
 
-        # ----------------------------------
-        # Execution
-        # ----------------------------------
+        # ----------------------------------------------------
+        # EXECUTION
+        # ----------------------------------------------------
 
         execution_output = self.run_execution_stage(
             context=context,
             rebalance_output=rebalance_output,
         )
 
-        # ----------------------------------
-        # Analytics
-        # ----------------------------------
+        # ----------------------------------------------------
+        # ANALYTICS
+        # ----------------------------------------------------
 
         analytics_result = self.run_analytics_stage(
             context=context,
@@ -7605,78 +7571,56 @@ class InstitutionalPortfolioPipeline:
             execution_output=execution_output,
         )
 
+        # IMPORTANT:
+        # Preserve the actual analytics result in shared context
+        # so downstream diagnostics/reporting can consume it.
         context.shared_objects["analytics_result"] = analytics_result
 
-        # ----------------------------------
-        # Diagnostics
-        # ----------------------------------
+        # ----------------------------------------------------
+        # DIAGNOSTICS
+        # ----------------------------------------------------
 
-        diagnostics_output = (
-            self.run_diagnostics_stage(
-                context= context,
-                portfolio_output= portfolio_output,
-                rebalance_output= rebalance_output,
-                execution_output= execution_output,
-                analytics_result= analytics_result,
-                attribution_result= attribution_result,
-                stress_result= stress_result,
-            )
+        diagnostics_output = self.run_diagnostics_stage(
+            context=context,
+            portfolio_output=portfolio_output,
+            rebalance_output=rebalance_output,
+            execution_output=execution_output,
+            analytics_result=analytics_result,
+            attribution_result=attribution_result,
+            stress_result=stress_result,
         )
 
-        # ----------------------------------
-        # Report
-        # ----------------------------------
+        # ----------------------------------------------------
+        # REPORT
+        # ----------------------------------------------------
 
-        report_output = (
-            self.run_report_stage(
-
-                context=
-                context,
-
-                forecast_output=
-                forecast_output,
-
-                risk_output=
-                risk_output,
-
-                constraint_output=
-                constraint_output,
-
-                optimization_output=
-                optimization_output,
-
-                portfolio_output=
-                portfolio_output,
-
-                rebalance_output=
-                rebalance_output,
-
-                execution_output=
-                execution_output,
-
-                diagnostics_output=
-                diagnostics_output,
-            )
+        report_output = self.run_report_stage(
+            context=context,
+            forecast_output=forecast_output,
+            risk_output=risk_output,
+            constraint_output=constraint_output,
+            optimization_output=optimization_output,
+            portfolio_output=portfolio_output,
+            rebalance_output=rebalance_output,
+            execution_output=execution_output,
+            diagnostics_output=diagnostics_output,
         )
 
-        completed_at = (
-            time.perf_counter()
+        # ----------------------------------------------------
+        # RUNTIME
+        # ----------------------------------------------------
+
+        completed_at = time.perf_counter()
+
+        runtime = PipelineRuntimeStats(
+            started_at=started_at,
+            completed_at=completed_at,
+            runtime_seconds=completed_at - started_at,
         )
 
-        runtime = (
-            PipelineRuntimeStats(
-
-                started_at=
-                started_at,
-
-                completed_at=
-                completed_at,
-
-                runtime_seconds=
-                completed_at
-                - started_at,
-            )
-        )
+        # ----------------------------------------------------
+        # FINAL RESULT
+        # ----------------------------------------------------
 
         return InstitutionalPipelineResult(
             report=(
@@ -7687,8 +7631,7 @@ class InstitutionalPortfolioPipeline:
             context=context,
             runtime=runtime,
             diagnostics={
-                "report_stage":
-                (
+                "report_stage": (
                     report_output.diagnostics
                     if report_output is not None
                     else {}
@@ -7696,22 +7639,27 @@ class InstitutionalPortfolioPipeline:
             },
             status=(
                 PipelineStatus.COMPLETED.name
-                if report_output is not None
-                and report_output.payload is not None
+                if (
+                    report_output is not None
+                    and report_output.payload is not None
+                )
                 else PipelineStatus.FAILED.name
             ),
             message=(
                 "Pipeline completed."
-                if report_output is not None
-                and report_output.payload is not None
+                if (
+                    report_output is not None
+                    and report_output.payload is not None
+                )
                 else "Reporting stage failed."
             ),
         )
-    
 
-# ============================================================
-# PART 14 — FACTORY & CONVENIENCE APIS
-# ============================================================
+
+    # ============================================================
+    # PART 14 — FACTORY & CONVENIENCE APIS
+    # ============================================================
+
 
 from typing import Optional
 
