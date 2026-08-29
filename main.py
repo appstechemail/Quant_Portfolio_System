@@ -2519,6 +2519,12 @@ test_atr = (
     .reset_index(drop=True)
 )
 
+atr_mean = (
+    data.loc[test_mask]
+    ["ATR"]
+    .reset_index(drop=True)
+)
+
 VOL_FILTER_WINDOW = int(
     CONFIG["BACKTEST"].get(
         "VOL_FILTER_WINDOW",
@@ -2554,6 +2560,7 @@ vol_filter = (
     .astype(bool)
     .values
 )
+
 
 logger.info("=" * 80)
 logger.info("VOLATILITY FILTER DEBUG")
