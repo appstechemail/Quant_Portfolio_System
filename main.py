@@ -2519,12 +2519,6 @@ test_atr = (
     .reset_index(drop=True)
 )
 
-atr_mean = (
-    data.loc[test_mask]
-    ["ATR"]
-    .reset_index(drop=True)
-)
-
 VOL_FILTER_WINDOW = int(
     CONFIG["BACKTEST"].get(
         "VOL_FILTER_WINDOW",
@@ -2537,6 +2531,15 @@ VOL_FILTER_QUANTILE = float(
         "VOL_FILTER_QUANTILE",
         0.80,
     )
+)
+
+atr_mean = (
+    test_atr
+    .rolling(
+        VOL_FILTER_WINDOW,
+        min_periods=20,
+    )
+    .mean()
 )
 
 atr_threshold = (
