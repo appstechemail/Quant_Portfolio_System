@@ -2519,23 +2519,39 @@ test_atr = (
     .reset_index(drop=True)
 )
 
-atr_mean = (
+VOL_FILTER_WINDOW = int(
+    CONFIG["BACKTEST"].get(
+        "VOL_FILTER_WINDOW",
+        60,
+    )
+)
+
+VOL_FILTER_QUANTILE = float(
+    CONFIG["BACKTEST"].get(
+        "VOL_FILTER_QUANTILE",
+        0.80,
+    )
+)
+
+atr_threshold = (
     test_atr
     .rolling(
-        60,
+        VOL_FILTER_WINDOW,
         min_periods=20,
     )
-    .mean()
+    .quantile(
+        VOL_FILTER_QUANTILE
+    )
 )
 
 vol_filter = (
-    test_atr <
-    atr_mean * 1.8
+    test_atr <= atr_threshold
 )
 
 vol_filter = (
     vol_filter
     .fillna(True)
+    .astype(bool)
     .values
 )
 
