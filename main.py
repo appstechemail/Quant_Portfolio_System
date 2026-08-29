@@ -2149,7 +2149,7 @@ tracker.add_stage(
 
 print(
     "Signals after Meta Filter:",
-    (final_proba > 0).sum(),
+    int(meta_pass.sum()),
 )
 
 logger.info("=" * 80)
@@ -2419,12 +2419,12 @@ print(
 )
 
 print(
-    "\nSignals with Positive Canonical Probability:",
+    "\nSignals with Positive Canonical Alpha:",
     int(
         (
             regime_diagnostics[
                 "Probability"
-            ] > 0
+            ] > NEUTRALITY
         ).sum()
     ),
 )
@@ -2454,10 +2454,10 @@ tracker.add_stage(
 # ----------------------------------------------------------
 
 print(
-    "Signals entering downstream stages:",
+    "Positive Alpha entering downstream stages:",
     int(
         (
-            final_proba > 0
+            final_proba > NEUTRALITY
         ).sum()
     ),
 )
@@ -2565,8 +2565,12 @@ logger.info(
 )
 
 logger.info(
-    "Signals BEFORE volatility filter: %d",
-    (final_proba > 0).sum(),
+    "Positive Alpha BEFORE volatility filter: %d",
+    int(
+        (
+            final_proba > NEUTRALITY
+        ).sum()
+    ),
 )
 
 volatility_pass = vol_filter.astype(bool)
@@ -2582,8 +2586,13 @@ tracker.add_stage(
 )
 
 print(
-    "Signals after Volatility Filter:",
-    (final_proba > 0).sum(),
+    "Positive Alpha after Volatility Filter:",
+    int(
+        (
+            (final_proba > NEUTRALITY)
+            & volatility_pass
+        ).sum()
+    ),
 )
 
 
@@ -2630,8 +2639,14 @@ tracker.add_stage(
 )
 
 print(
-    "Signals entering backtest:",
-    int((final_proba > 0).sum()),
+    "Positive Alpha entering backtest:",
+    int(
+        (
+            (final_proba > NEUTRALITY)
+            & meta_pass
+            & volatility_pass
+        ).sum()
+    ),
 )
 
 logger.info("=" * 80)
