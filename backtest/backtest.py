@@ -1453,11 +1453,20 @@ def _cross_sectional_signal(
         )
 
     if "Volatility_Pass" in out.columns:
-        out["Eligible"] &= (
+        out["Volatility_Exposure"] = np.where(
             out["Volatility_Pass"]
-            .fillna(False)
-            .astype(bool)
+            .fillna(True)
+            .astype(bool),
+            1.0,
+            float(
+                BACKTEST_CONFIG.get(
+                    "VOLATILITY_EXPOSURE",
+                    0.50,
+                )
+            ),
         )
+    else:
+        out["Volatility_Exposure"] = 1.0
 
     out.loc[
         out["Confidence"] < MIN_CONFIDENCE,
@@ -2036,6 +2045,18 @@ def _risk_adjust_position(
             .fillna(1.0)
         )
 
+        # --------------------------------------------------------
+        # RE-APPLY HARD POSITION CAP AFTER VOLATILITY TARGETING
+        # --------------------------------------------------------
+
+        out["Position"] = (
+            out["Position"]
+            .clip(
+                lower=0.0,
+                upper=MAX_POSITION_SIZE,
+            )
+        )
+
     # --------------------------------------------------------
     # REGIME EXPOSURE
     # --------------------------------------------------------
@@ -2111,6 +2132,11 @@ def _risk_adjust_position(
     out["Position"] *= (
         out["Portfolio_Exposure"]
     )
+
+    if "Volatility_Exposure" in out.columns:
+        out["Position"] *= (
+            out["Volatility_Exposure"]
+        )
     # --------------------------------------------------------
     # Gross exposure cap
     # --------------------------------------------------------
