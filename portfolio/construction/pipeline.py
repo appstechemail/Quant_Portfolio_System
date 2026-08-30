@@ -6599,12 +6599,31 @@ class InstitutionalPortfolioPipeline:
             )
 
             # ----------------------------------
-            # Diagnostics
+            # Validate Analytics Result
+            # ----------------------------------
+
+            if result is None:
+                raise RuntimeError(
+                    "AnalyticsEngine.run_all() returned None."
+                )
+
+            logger.info(
+                "Analytics stage completed successfully | "
+                "result_type=%s",
+                type(result).__name__,
+            )
+
+            # ----------------------------------
+            # Diagnostics / Shared Context
             # ----------------------------------
 
             context.shared_objects[
                 "analytics_result"
             ] = result
+
+            context.shared_objects[
+                "analytics_error"
+            ] = None
 
             context.shared_objects[
                 "analytics_runtime_seconds"
