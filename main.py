@@ -3784,12 +3784,14 @@ print(
     "\nExecuting Institutional Pipeline"
 )
 
+
 institutional_result = (
     institutional_pipeline(
         inputs=pipeline_input,
         metadata=metadata,
     )
 )
+
 print(
     "\nAnalytics Error:"
 )
@@ -4117,6 +4119,16 @@ analytics_result = (
     .runtime_diagnostics
     .get("analytics")
 )
+
+analytics_error = (
+    institutional_result
+    .context
+    .shared_objects
+    .get("analytics_error")
+)
+
+print("\nAnalytics Error Detail")
+print(analytics_error)
 
 print(
     "\nAnalytics Result"
