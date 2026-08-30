@@ -3788,24 +3788,8 @@ institutional_result = (
     institutional_pipeline(
         inputs=pipeline_input,
         metadata=metadata,
-        config=InstitutionalPipelineConfig(
-            run_forecast=True,
-            run_risk=True,
-            run_constraints=True,
-            run_optimization=True,
-            run_portfolio_build=True,
-            run_rebalance=True,
-            run_execution=True,
-            run_analytics=True,
-            run_attribution=True,
-            run_stress_testing=True,
-            run_monitoring=True,
-            run_diagnostics=True,
-            run_reporting=True,
-        ),
     )
 )
-
 print(
     "\nAnalytics Error:"
 )
