@@ -6437,7 +6437,17 @@ class InstitutionalPortfolioPipeline:
     ) -> Any:
 
         if not self.config.run_analytics:
+            logger.warning(
+                "Analytics stage DISABLED | config=%r | run_analytics=%r",
+                self.config,
+                self.config.run_analytics,
+            )
             return None
+
+        logger.info(
+            "Analytics stage ENABLED | run_analytics=%r",
+            self.config.run_analytics,
+        )
 
         start = time.perf_counter()
 
