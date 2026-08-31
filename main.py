@@ -3980,6 +3980,22 @@ if stress is not None:
     )
 
 # ----------------------------------------------------------
+# Monitoring TEST
+# ----------------------------------------------------------
+
+monitoring_result = (
+    institutional_result
+    .report
+    .runtime_diagnostics
+    .get("monitoring")
+)
+
+if monitoring_result is not None:
+
+    print(
+        "Monitoring Testing Available"
+    )
+# ----------------------------------------------------------
 # SAVE RESULT
 # ----------------------------------------------------------
 
