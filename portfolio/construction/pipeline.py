@@ -5969,7 +5969,7 @@ def run_report_stage(
             execution_output = execution_output,
             diagnostics_output = diagnostics_output,
             analytics_result = analytics_result,
-            attribution_result=attribution_result,
+            attribution_result = attribution_result,
         )
     )
 
@@ -7661,6 +7661,7 @@ class InstitutionalPortfolioPipeline:
         execution_output: ExecutionStageOutput | None,
         diagnostics_output: DiagnosticsStageOutput | None,
         analytics_result: Any = None,
+        attribution_result: Any = None,
     ) -> PipelineStageOutput | None:
         
         if not (
@@ -7689,6 +7690,7 @@ class InstitutionalPortfolioPipeline:
                 execution_output=execution_output,
                 diagnostics_output=diagnostics_output,
                 analytics_result=analytics_result,
+                attribution_result=attribution_result,
             )
         )
 
