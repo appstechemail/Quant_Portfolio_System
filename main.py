@@ -3966,8 +3966,11 @@ if attribution is not None:
 # STRESS TEST
 # ----------------------------------------------------------
 
-stress = institutional_result.diagnostics.get(
-    "stress_testing"
+stress = (
+    institutional_result
+    .report
+    .runtime_diagnostics
+    .get("stress_testing")
 )
 
 if stress is not None:
