@@ -6677,9 +6677,12 @@ class InstitutionalMonitoringEngine:
 
         return (
             self.runtime_engine.run(
-
-                metrics=
-                inputs.runtime_metrics
+                runtime_seconds=float(
+                    inputs.runtime_metrics.get(
+                        "runtime_seconds",
+                        0.0,
+                    )
+                )
             )
         )
 
@@ -6694,12 +6697,7 @@ class InstitutionalMonitoringEngine:
     ) -> HealthMonitoringResult:
 
         return (
-            self.health_engine.run(
-
-                component_health=
-                inputs
-                .component_health
-            )
+            self.health_engine.run()
         )
 
     # ========================================================
