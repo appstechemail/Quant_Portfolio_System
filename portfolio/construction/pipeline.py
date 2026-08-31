@@ -5674,6 +5674,7 @@ class InstitutionalPortfolioReportBuilder:
         execution_result: Any,
         diagnostics_result: Any,
         analytics_result=None,
+        attribution_result=None,
     ) -> (InstitutionalPortfolioConstructionReport):
 
         portfolio_obj = None
@@ -5769,7 +5770,7 @@ class InstitutionalPortfolioReportBuilder:
 
             runtime_diagnostics={
                 "analytics": analytics_result,
-                # "attribution": attribution_result,
+                "attribution": attribution_result,
                 # "stress_testing": stress_result,
                 # "monitoring": monitoring_result,
                 "execution": execution_obj,
@@ -5824,6 +5825,7 @@ class PortfolioReportStage:
         execution_output: ExecutionStageOutput | None,
         diagnostics_output: DiagnosticsStageOutput | None,
         analytics_result: Any = None,
+        attribution_result: Any = None,
     ) -> PipelineStageOutput:
 
         start = (
@@ -5853,35 +5855,17 @@ class PortfolioReportStage:
                 InstitutionalPortfolioReportBuilder
                 .build(
 
-                    metadata=
-                    self.metadata,
-
-                    forecast_result=
-                    forecast_output,
-
-                    risk_result=
-                    risk_output,
-
-                    constraint_result=
-                    constraint_output,
-
-                    optimization_result=
-                    optimization_output,
-
-                    portfolio_result=
-                    portfolio_output,
-
-                    rebalance_result=
-                    rebalance_output,
-
-                    execution_result=
-                    execution_output,
-
-                    diagnostics_result=
-                    diagnostics_output,
-
-                    analytics_result=
-                    analytics_result,
+                    metadata = self.metadata,
+                    forecast_result = forecast_output,
+                    risk_result = risk_output,
+                    constraint_result = constraint_output,
+                    optimization_result = optimization_output,
+                    portfolio_result = portfolio_output,
+                    rebalance_result = rebalance_output,
+                    execution_result = execution_output,
+                    diagnostics_result = diagnostics_output,
+                    analytics_result = analytics_result,
+                    attribution_result = attribution_result,
                 )
             )
 
@@ -5966,6 +5950,7 @@ def run_report_stage(
     execution_output: ExecutionStageOutput | None,
     diagnostics_output: DiagnosticsStageOutput | None,
     analytics_result: Any = None,
+    attribution_result: Any = None,
 ) -> PipelineStageOutput:
     
     """
@@ -5975,32 +5960,16 @@ def run_report_stage(
     output = (
         stage.run(
 
-            forecast_output=
-            forecast_output,
-
-            risk_output=
-            risk_output,
-
-            constraint_output=
-            constraint_output,
-
-            optimization_output=
-            optimization_output,
-
-            portfolio_output=
-            portfolio_output,
-
-            rebalance_output=
-            rebalance_output,
-
-            execution_output=
-            execution_output,
-
-            diagnostics_output=
-            diagnostics_output,
-
-            analytics_result=
-            analytics_result,
+            forecast_output = forecast_output,
+            risk_output = risk_output,
+            constraint_output = constraint_output,
+            optimization_output = optimization_output,
+            portfolio_output = portfolio_output,
+            rebalance_output = rebalance_output,
+            execution_output = execution_output,
+            diagnostics_output = diagnostics_output,
+            analytics_result = analytics_result,
+            attribution_result=attribution_result,
         )
     )
 
@@ -6617,20 +6586,346 @@ class InstitutionalPortfolioPipeline:
 
             return None
 
-    # def run_attribution_stage(
-    #     self,
-    #     *,
-    #     context,
-    #     inputs,
-    #     portfolio_output,
-    #     rebalance_output,
-    #     execution_output,
-    #     analytics_result,
-    # ):
-    #     if not self.config.run_attribution:
-    #         return None
 
-    #     ...
+    # --------------------------------------------------------
+    # ATTRIBUTION
+    # --------------------------------------------------------
+
+    def run_attribution_stage(
+        self,
+        *,
+        context: PipelineContext,
+        inputs: PipelineInput,
+        portfolio_output: PortfolioBuildStageOutput | None,
+        analytics_result: Any = None,
+    ) -> Any:
+
+        if not self.config.run_attribution:
+            logger.warning(
+                "Attribution stage DISABLED | run_attribution=%r",
+                self.config.run_attribution,
+            )
+            return None
+
+        logger.info(
+            "Attribution stage ENABLED | run_attribution=%r",
+            self.config.run_attribution,
+        )
+
+        start = time.perf_counter()
+
+        try:
+
+            # ----------------------------------
+            # Validate portfolio
+            # ----------------------------------
+
+            if (
+                portfolio_output is None
+                or portfolio_output.result is None
+            ):
+                raise ValueError(
+                    "Attribution requires a valid portfolio output."
+                )
+
+            portfolio_result = (
+                portfolio_output.result
+            )
+
+            weights = (
+                portfolio_result
+                .weights
+                .copy()
+                .astype(float)
+            )
+
+            if weights.empty:
+                raise ValueError(
+                    "Attribution portfolio contains no weights."
+                )
+
+            # ----------------------------------
+            # Build asset returns
+            # ----------------------------------
+
+            returns = (
+                inputs
+                .market_data
+                .returns
+            )
+
+            if returns is None or returns.empty:
+                raise ValueError(
+                    "Market returns unavailable for attribution."
+                )
+
+            asset_returns = (
+                returns
+                .sort_index()
+                .iloc[-1]
+                .astype(float)
+            )
+
+            # Align portfolio weights and latest returns
+            common_assets = (
+                weights.index
+                .intersection(
+                    asset_returns.index
+                )
+            )
+
+            if len(common_assets) == 0:
+                raise ValueError(
+                    "No common assets between portfolio weights "
+                    "and market returns."
+                )
+
+            aligned_weights = (
+                weights
+                .reindex(common_assets)
+                .fillna(0.0)
+            )
+
+            aligned_returns = (
+                asset_returns
+                .reindex(common_assets)
+                .replace(
+                    [np.inf, -np.inf],
+                    np.nan,
+                )
+            )
+
+            valid = (
+                aligned_weights.notna()
+                &
+                aligned_returns.notna()
+            )
+
+            aligned_weights = (
+                aligned_weights.loc[valid]
+            )
+
+            aligned_returns = (
+                aligned_returns.loc[valid]
+            )
+
+            if aligned_weights.empty:
+                raise ValueError(
+                    "No valid asset observations available for attribution."
+                )
+
+            # ----------------------------------
+            # Benchmark return
+            # ----------------------------------
+
+            benchmark_return = 0.0
+
+            benchmark_returns = (
+                inputs
+                .market_data
+                .benchmark_returns
+            )
+
+            if (
+                benchmark_returns is not None
+                and not benchmark_returns.empty
+            ):
+
+                if isinstance(
+                    benchmark_returns,
+                    pd.Series,
+                ):
+                    benchmark_return = float(
+                        benchmark_returns
+                        .astype(float)
+                        .replace(
+                            [np.inf, -np.inf],
+                            np.nan,
+                        )
+                        .dropna()
+                        .iloc[-1]
+                    )
+
+                elif isinstance(
+                    benchmark_returns,
+                    pd.DataFrame,
+                ):
+
+                    clean_benchmark = (
+                        benchmark_returns
+                        .astype(float)
+                        .replace(
+                            [np.inf, -np.inf],
+                            np.nan,
+                        )
+                        .dropna(
+                            how="all"
+                        )
+                    )
+
+                    if not clean_benchmark.empty:
+
+                        benchmark_name = (
+                            getattr(
+                                self.metadata,
+                                "benchmark_name",
+                                None,
+                            )
+                            or "NIFTY50"
+                        )
+
+                        if (
+                            benchmark_name
+                            in clean_benchmark.columns
+                        ):
+                            benchmark_return = float(
+                                clean_benchmark[
+                                    benchmark_name
+                                ].iloc[-1]
+                            )
+                        else:
+                            benchmark_return = float(
+                                clean_benchmark
+                                .iloc[:, 0]
+                                .iloc[-1]
+                            )
+
+            # ----------------------------------
+            # Attribution metadata
+            # ----------------------------------
+
+            attribution_metadata = (
+                AttributionMetadata(
+                    created_at=
+                    datetime.now(
+                        timezone.utc
+                    ),
+
+                    version="1.0",
+
+                    source=
+                    "Institutional Attribution Engine",
+
+                    portfolio_name=(
+                        getattr(
+                            self.metadata,
+                            "strategy_name",
+                            None,
+                        )
+                        or "Institutional Portfolio"
+                    ),
+
+                    benchmark_name=(
+                        getattr(
+                            self.metadata,
+                            "benchmark_name",
+                            None,
+                        )
+                        or "NIFTY50"
+                    ),
+                )
+            )
+
+            # ----------------------------------
+            # Attribution engine
+            # ----------------------------------
+
+            engine = create_attribution_engine(
+                metadata=
+                attribution_metadata,
+
+                portfolio_name=(
+                    getattr(
+                        self.metadata,
+                        "strategy_name",
+                        None,
+                    )
+                    or "Institutional Portfolio"
+                ),
+
+                benchmark_name=(
+                    getattr(
+                        self.metadata,
+                        "benchmark_name",
+                        None,
+                    )
+                    or "NIFTY50"
+                ),
+            )
+
+            # ----------------------------------
+            # Run return attribution
+            # ----------------------------------
+
+            result = (
+                engine.run_return_attribution(
+                    weights=
+                    aligned_weights,
+
+                    returns=
+                    aligned_returns,
+
+                    benchmark_return=
+                    benchmark_return,
+
+                    cash_weight=0.0,
+
+                    cash_return=0.0,
+                )
+            )
+
+            if result is None:
+                raise RuntimeError(
+                    "Attribution engine returned None."
+                )
+
+            logger.info(
+                "Attribution stage completed successfully | "
+                "result_type=%s",
+                type(result).__name__,
+            )
+
+            context.shared_objects[
+                "attribution_result"
+            ] = result
+
+            context.shared_objects[
+                "attribution_error"
+            ] = None
+
+            context.shared_objects[
+                "attribution_runtime_seconds"
+            ] = (
+                time.perf_counter()
+                - start
+            )
+
+            return result
+
+        except Exception as exc:
+
+            logger.exception(
+                "Attribution stage failed: %s",
+                exc,
+            )
+
+            context.shared_objects[
+                "attribution_error"
+            ] = {
+                "stage": "attribution",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
+
+            context.shared_objects[
+                "attribution_runtime_seconds"
+            ] = (
+                time.perf_counter()
+                - start
+            )
+
+            return None
+
 
     # --------------------------------
 
@@ -7518,6 +7813,21 @@ class InstitutionalPortfolioPipeline:
         context.shared_objects["analytics_result"] = analytics_result
 
         # ----------------------------------------------------
+        # ATTRIBUTION
+        # ----------------------------------------------------
+
+        attribution_result = self.run_attribution_stage(
+            context=context,
+            inputs=inputs,
+            portfolio_output=portfolio_output,
+            analytics_result=analytics_result,
+        )
+
+        context.shared_objects[
+            "attribution_result"
+        ] = attribution_result
+
+        # ----------------------------------------------------
         # DIAGNOSTICS
         # ----------------------------------------------------
 
@@ -7546,6 +7856,7 @@ class InstitutionalPortfolioPipeline:
             execution_output=execution_output,
             diagnostics_output=diagnostics_output,
             analytics_result=analytics_result,
+            attribution_result=attribution_result,
         )
 
         # ----------------------------------------------------
