@@ -745,7 +745,7 @@ class AlertMonitoringResult(
         default_factory=list
     )
 
-    critical_alerts: int = 0
+    total_alerts: int = 0
 
 
 # ============================================================
