@@ -7580,484 +7580,484 @@ class InstitutionalPortfolioPipeline:
 
         return None
 
-        # --------------------------------------------------------
-        # STRESS TESTING
-        # --------------------------------------------------------
+    # --------------------------------------------------------
+    # STRESS TESTING
+    # --------------------------------------------------------
 
-        def run_stress_testing_stage(
-            self,
-            *,
-            context: PipelineContext,
-            inputs: PipelineInput,
-            portfolio_output: PortfolioBuildStageOutput | None,
-            analytics_result: Any = None,
-        ) -> Any:
+    def run_stress_testing_stage(
+        self,
+        *,
+        context: PipelineContext,
+        inputs: PipelineInput,
+        portfolio_output: PortfolioBuildStageOutput | None,
+        analytics_result: Any = None,
+    ) -> Any:
 
-            if not self.config.run_stress_testing:
-                logger.warning(
-                    "Stress Testing stage DISABLED | "
-                    "run_stress_testing=%r",
-                    self.config.run_stress_testing,
-                )
-                return None
-
-            logger.info(
-                "Stress Testing stage ENABLED | "
+        if not self.config.run_stress_testing:
+            logger.warning(
+                "Stress Testing stage DISABLED | "
                 "run_stress_testing=%r",
                 self.config.run_stress_testing,
             )
+            return None
 
-            start = time.perf_counter()
+        logger.info(
+            "Stress Testing stage ENABLED | "
+            "run_stress_testing=%r",
+            self.config.run_stress_testing,
+        )
 
-            try:
+        start = time.perf_counter()
 
-                # ----------------------------------
-                # Validate portfolio
-                # ----------------------------------
+        try:
+
+            # ----------------------------------
+            # Validate portfolio
+            # ----------------------------------
+
+            if (
+                portfolio_output is None
+                or portfolio_output.result is None
+            ):
+                raise ValueError(
+                    "Stress Testing requires a valid portfolio output."
+                )
+
+            portfolio_result = (
+                portfolio_output.result
+            )
+
+            # ----------------------------------
+            # Portfolio weights
+            # ----------------------------------
+
+            weights = (
+                portfolio_result
+                .weights
+                .copy()
+                .astype(float)
+            )
+
+            if weights.empty:
+                raise ValueError(
+                    "Stress Testing portfolio contains no weights."
+                )
+
+            weights = (
+                weights
+                .replace(
+                    [np.inf, -np.inf],
+                    np.nan,
+                )
+                .dropna()
+            )
+
+            if weights.empty:
+                raise ValueError(
+                    "Stress Testing portfolio weights are invalid."
+                )
+
+            # ----------------------------------
+            # Market asset returns
+            # ----------------------------------
+
+            returns = (
+                inputs
+                .market_data
+                .returns
+            )
+
+            if (
+                returns is None
+                or returns.empty
+            ):
+                raise ValueError(
+                    "Market returns unavailable for Stress Testing."
+                )
+
+            if not isinstance(
+                returns,
+                pd.DataFrame,
+            ):
+                raise TypeError(
+                    "Stress Testing requires market_data.returns "
+                    "as a DataFrame."
+                )
+
+            returns = (
+                returns
+                .sort_index()
+                .astype(float)
+                .replace(
+                    [np.inf, -np.inf],
+                    np.nan,
+                )
+            )
+
+            # ----------------------------------
+            # Align portfolio and returns
+            # ----------------------------------
+
+            common_assets = (
+                weights.index
+                .intersection(
+                    returns.columns
+                )
+            )
+
+            if len(common_assets) == 0:
+                raise ValueError(
+                    "No common assets between portfolio weights "
+                    "and market returns for Stress Testing."
+                )
+
+            aligned_weights = (
+                weights
+                .reindex(common_assets)
+                .fillna(0.0)
+            )
+
+            aligned_returns = (
+                returns[
+                    common_assets
+                ]
+            )
+
+            # ----------------------------------
+            # Build daily portfolio returns
+            # ----------------------------------
+
+            portfolio_returns = (
+                aligned_returns
+                .mul(
+                    aligned_weights,
+                    axis=1,
+                )
+                .sum(
+                    axis=1,
+                    min_count=1,
+                )
+                .dropna()
+            )
+
+            if portfolio_returns.empty:
+                raise ValueError(
+                    "Unable to construct portfolio returns "
+                    "for Stress Testing."
+                )
+
+            # ----------------------------------
+            # Liquidity profile
+            # ----------------------------------
+
+            liquidity_profile = None
+
+            liquidity_data = getattr(
+                inputs,
+                "liquidity_data",
+                None,
+            )
+
+            if liquidity_data is not None:
+
+                candidate = getattr(
+                    liquidity_data,
+                    "liquidity_profile",
+                    None,
+                )
 
                 if (
-                    portfolio_output is None
-                    or portfolio_output.result is None
+                    isinstance(
+                        candidate,
+                        pd.DataFrame,
+                    )
+                    and not candidate.empty
                 ):
-                    raise ValueError(
-                        "Stress Testing requires a valid portfolio output."
+                    liquidity_profile = (
+                        candidate.copy()
                     )
 
-                portfolio_result = (
-                    portfolio_output.result
+            # ----------------------------------
+            # Factor exposures
+            # ----------------------------------
+
+            factor_exposures = None
+            factor_returns = None
+            correlation_matrix = None
+
+            factor_data = getattr(
+                inputs,
+                "factor_data",
+                None,
+            )
+
+            if factor_data is not None:
+
+                candidate = getattr(
+                    factor_data,
+                    "factor_exposures",
+                    None,
                 )
 
-                # ----------------------------------
-                # Portfolio weights
-                # ----------------------------------
-
-                weights = (
-                    portfolio_result
-                    .weights
-                    .copy()
-                    .astype(float)
-                )
-
-                if weights.empty:
-                    raise ValueError(
-                        "Stress Testing portfolio contains no weights."
+                if (
+                    isinstance(
+                        candidate,
+                        pd.DataFrame,
+                    )
+                    and not candidate.empty
+                ):
+                    factor_exposures = (
+                        candidate.copy()
                     )
 
-                weights = (
-                    weights
+                candidate = getattr(
+                    factor_data,
+                    "factor_returns",
+                    None,
+                )
+
+                if (
+                    isinstance(
+                        candidate,
+                        pd.DataFrame,
+                    )
+                    and not candidate.empty
+                ):
+                    factor_returns = (
+                        candidate.copy()
+                    )
+
+            # ----------------------------------
+            # Correlation matrix
+            # ----------------------------------
+
+            if (
+                aligned_returns.shape[1]
+                >= 2
+            ):
+
+                correlation_matrix = (
+                    aligned_returns
+                    .corr()
                     .replace(
                         [np.inf, -np.inf],
                         np.nan,
                     )
-                    .dropna()
-                )
-
-                if weights.empty:
-                    raise ValueError(
-                        "Stress Testing portfolio weights are invalid."
-                    )
-
-                # ----------------------------------
-                # Market asset returns
-                # ----------------------------------
-
-                returns = (
-                    inputs
-                    .market_data
-                    .returns
-                )
-
-                if (
-                    returns is None
-                    or returns.empty
-                ):
-                    raise ValueError(
-                        "Market returns unavailable for Stress Testing."
-                    )
-
-                if not isinstance(
-                    returns,
-                    pd.DataFrame,
-                ):
-                    raise TypeError(
-                        "Stress Testing requires market_data.returns "
-                        "as a DataFrame."
-                    )
-
-                returns = (
-                    returns
-                    .sort_index()
-                    .astype(float)
-                    .replace(
-                        [np.inf, -np.inf],
-                        np.nan,
-                    )
-                )
-
-                # ----------------------------------
-                # Align portfolio and returns
-                # ----------------------------------
-
-                common_assets = (
-                    weights.index
-                    .intersection(
-                        returns.columns
-                    )
-                )
-
-                if len(common_assets) == 0:
-                    raise ValueError(
-                        "No common assets between portfolio weights "
-                        "and market returns for Stress Testing."
-                    )
-
-                aligned_weights = (
-                    weights
-                    .reindex(common_assets)
                     .fillna(0.0)
                 )
 
-                aligned_returns = (
-                    returns[
-                        common_assets
-                    ]
-                )
+            # ----------------------------------
+            # Portfolio beta
+            # ----------------------------------
 
-                # ----------------------------------
-                # Build daily portfolio returns
-                # ----------------------------------
+            portfolio_beta = 1.0
 
-                portfolio_returns = (
-                    aligned_returns
-                    .mul(
-                        aligned_weights,
-                        axis=1,
-                    )
-                    .sum(
-                        axis=1,
-                        min_count=1,
-                    )
-                    .dropna()
-                )
+            if (
+                analytics_result is not None
+            ):
 
-                if portfolio_returns.empty:
-                    raise ValueError(
-                        "Unable to construct portfolio returns "
-                        "for Stress Testing."
-                    )
-
-                # ----------------------------------
-                # Liquidity profile
-                # ----------------------------------
-
-                liquidity_profile = None
-
-                liquidity_data = getattr(
-                    inputs,
-                    "liquidity_data",
+                risk_analytics = getattr(
+                    analytics_result,
+                    "risk_analytics",
                     None,
                 )
 
-                if liquidity_data is not None:
+                if risk_analytics is not None:
 
-                    candidate = getattr(
-                        liquidity_data,
-                        "liquidity_profile",
+                    beta = getattr(
+                        risk_analytics,
+                        "portfolio_beta",
                         None,
                     )
 
                     if (
-                        isinstance(
-                            candidate,
-                            pd.DataFrame,
+                        beta is not None
+                        and np.isfinite(
+                            float(beta)
                         )
-                        and not candidate.empty
+                        and abs(
+                            float(beta)
+                        ) > 0
                     ):
-                        liquidity_profile = (
-                            candidate.copy()
+                        portfolio_beta = float(
+                            beta
                         )
 
-                # ----------------------------------
-                # Factor exposures
-                # ----------------------------------
+            # ----------------------------------
+            # Diversification / concentration
+            # ----------------------------------
 
-                factor_exposures = None
-                factor_returns = None
-                correlation_matrix = None
+            normalized_weights = (
+                aligned_weights
+                .abs()
+            )
 
-                factor_data = getattr(
-                    inputs,
-                    "factor_data",
-                    None,
-                )
+            weight_sum = float(
+                normalized_weights.sum()
+            )
 
-                if factor_data is not None:
-
-                    candidate = getattr(
-                        factor_data,
-                        "factor_exposures",
-                        None,
-                    )
-
-                    if (
-                        isinstance(
-                            candidate,
-                            pd.DataFrame,
-                        )
-                        and not candidate.empty
-                    ):
-                        factor_exposures = (
-                            candidate.copy()
-                        )
-
-                    candidate = getattr(
-                        factor_data,
-                        "factor_returns",
-                        None,
-                    )
-
-                    if (
-                        isinstance(
-                            candidate,
-                            pd.DataFrame,
-                        )
-                        and not candidate.empty
-                    ):
-                        factor_returns = (
-                            candidate.copy()
-                        )
-
-                # ----------------------------------
-                # Correlation matrix
-                # ----------------------------------
-
-                if (
-                    aligned_returns.shape[1]
-                    >= 2
-                ):
-
-                    correlation_matrix = (
-                        aligned_returns
-                        .corr()
-                        .replace(
-                            [np.inf, -np.inf],
-                            np.nan,
-                        )
-                        .fillna(0.0)
-                    )
-
-                # ----------------------------------
-                # Portfolio beta
-                # ----------------------------------
-
-                portfolio_beta = 1.0
-
-                if (
-                    analytics_result is not None
-                ):
-
-                    risk_analytics = getattr(
-                        analytics_result,
-                        "risk_analytics",
-                        None,
-                    )
-
-                    if risk_analytics is not None:
-
-                        beta = getattr(
-                            risk_analytics,
-                            "portfolio_beta",
-                            None,
-                        )
-
-                        if (
-                            beta is not None
-                            and np.isfinite(
-                                float(beta)
-                            )
-                            and abs(
-                                float(beta)
-                            ) > 0
-                        ):
-                            portfolio_beta = float(
-                                beta
-                            )
-
-                # ----------------------------------
-                # Diversification / concentration
-                # ----------------------------------
-
+            if weight_sum > 0:
                 normalized_weights = (
-                    aligned_weights
-                    .abs()
+                    normalized_weights
+                    / weight_sum
                 )
 
-                weight_sum = float(
-                    normalized_weights.sum()
-                )
+            concentration_metric = float(
+                (
+                    normalized_weights
+                    ** 2
+                ).sum()
+            )
 
-                if weight_sum > 0:
-                    normalized_weights = (
-                        normalized_weights
-                        / weight_sum
-                    )
-
-                concentration_metric = float(
-                    (
-                        normalized_weights
-                        ** 2
-                    ).sum()
-                )
-
-                diversification_ratio = float(
-                    1.0
-                    /
-                    max(
-                        concentration_metric,
-                        1e-12,
-                    )
-                )
-
-                # ----------------------------------
-                # Stress metadata
-                # ----------------------------------
-
-                stress_metadata = StressMetadata(
-
-                    portfolio_name=(
-                        getattr(
-                            self.metadata,
-                            "strategy_name",
-                            None,
-                        )
-                        or "Institutional Portfolio"
-                    ),
-
-                    benchmark_name=(
-                        getattr(
-                            self.metadata,
-                            "benchmark_name",
-                            None,
-                        )
-                        or "NIFTY50"
-                    ),
-                )
-
-                # ----------------------------------
-                # Stress input
-                # ----------------------------------
-
-                stress_input = StressTestingInput(
-
-                    returns=portfolio_returns,
-
-                    portfolio_weights=(
-                        aligned_weights
-                        .copy()
-                    ),
-
-                    factor_exposures=
-                    factor_exposures,
-
-                    factor_returns=
-                    factor_returns,
-
-                    correlation_matrix=
-                    correlation_matrix,
-
-                    liquidity_profile=
-                    liquidity_profile,
-
-                    portfolio_beta=
-                    portfolio_beta,
-
-                    diversification_ratio=
-                    diversification_ratio,
-
-                    concentration_metric=
+            diversification_ratio = float(
+                1.0
+                /
+                max(
                     concentration_metric,
+                    1e-12,
                 )
+            )
 
-                # ----------------------------------
-                # Execute full stress suite
-                # ----------------------------------
+            # ----------------------------------
+            # Stress metadata
+            # ----------------------------------
 
-                result = run_full_stress_suite(
+            stress_metadata = StressMetadata(
 
-                    metadata=
-                    stress_metadata,
-
-                    inputs=
-                    stress_input,
-
-                    config=
-                    StressTestingConfig(),
-                )
-
-                # ----------------------------------
-                # Validate result
-                # ----------------------------------
-
-                if result is None:
-                    raise RuntimeError(
-                        "Stress Testing suite returned None."
+                portfolio_name=(
+                    getattr(
+                        self.metadata,
+                        "strategy_name",
+                        None,
                     )
+                    or "Institutional Portfolio"
+                ),
 
-                logger.info(
-                    "Stress Testing stage completed successfully | "
-                    "result_type=%s",
-                    type(result).__name__,
+                benchmark_name=(
+                    getattr(
+                        self.metadata,
+                        "benchmark_name",
+                        None,
+                    )
+                    or "NIFTY50"
+                ),
+            )
+
+            # ----------------------------------
+            # Stress input
+            # ----------------------------------
+
+            stress_input = StressTestingInput(
+
+                returns=portfolio_returns,
+
+                portfolio_weights=(
+                    aligned_weights
+                    .copy()
+                ),
+
+                factor_exposures=
+                factor_exposures,
+
+                factor_returns=
+                factor_returns,
+
+                correlation_matrix=
+                correlation_matrix,
+
+                liquidity_profile=
+                liquidity_profile,
+
+                portfolio_beta=
+                portfolio_beta,
+
+                diversification_ratio=
+                diversification_ratio,
+
+                concentration_metric=
+                concentration_metric,
+            )
+
+            # ----------------------------------
+            # Execute full stress suite
+            # ----------------------------------
+
+            result = run_full_stress_suite(
+
+                metadata=
+                stress_metadata,
+
+                inputs=
+                stress_input,
+
+                config=
+                StressTestingConfig(),
+            )
+
+            # ----------------------------------
+            # Validate result
+            # ----------------------------------
+
+            if result is None:
+                raise RuntimeError(
+                    "Stress Testing suite returned None."
                 )
 
-                # ----------------------------------
-                # Shared context
-                # ----------------------------------
+            logger.info(
+                "Stress Testing stage completed successfully | "
+                "result_type=%s",
+                type(result).__name__,
+            )
 
-                context.shared_objects[
-                    "stress_result"
-                ] = result
+            # ----------------------------------
+            # Shared context
+            # ----------------------------------
 
-                context.shared_objects[
-                    "stress_error"
-                ] = None
+            context.shared_objects[
+                "stress_result"
+            ] = result
 
-                context.shared_objects[
-                    "stress_runtime_seconds"
-                ] = (
-                    time.perf_counter()
-                    - start
-                )
+            context.shared_objects[
+                "stress_error"
+            ] = None
 
-                return result
+            context.shared_objects[
+                "stress_runtime_seconds"
+            ] = (
+                time.perf_counter()
+                - start
+            )
 
-            except Exception as exc:
+            return result
 
-                logger.exception(
-                    "Stress Testing stage failed: %s",
-                    exc,
-                )
+        except Exception as exc:
 
-                context.shared_objects[
-                    "stress_error"
-                ] = {
-                    "stage":
-                    "stress_testing",
+            logger.exception(
+                "Stress Testing stage failed: %s",
+                exc,
+            )
 
-                    "error_type":
-                    type(exc).__name__,
+            context.shared_objects[
+                "stress_error"
+            ] = {
+                "stage":
+                "stress_testing",
 
-                    "error_message":
-                    str(exc),
-                }
+                "error_type":
+                type(exc).__name__,
 
-                context.shared_objects[
-                    "stress_runtime_seconds"
-                ] = (
-                    time.perf_counter()
-                    - start
-                )
+                "error_message":
+                str(exc),
+            }
 
-                return None
+            context.shared_objects[
+                "stress_runtime_seconds"
+            ] = (
+                time.perf_counter()
+                - start
+            )
+
+            return None
 
     # --------------------------------------------------------
     # DIAGNOSTICS
@@ -8368,7 +8368,7 @@ class InstitutionalPortfolioPipeline:
             rebalance_output=rebalance_output,
             execution_output=execution_output,
             diagnostics_output=diagnostics_output,
-            
+
             analytics_result=analytics_result,
             attribution_result=attribution_result,
             stress_result=stress_result,
