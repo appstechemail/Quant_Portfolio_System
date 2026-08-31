@@ -33,6 +33,13 @@ from src.portfolio.construction.stress_testing import (
     run_full_stress_suite,
 )
 
+from src.portfolio.construction.monitoring import (
+    MonitoringMetadata,
+    MonitoringConfig,
+    MonitoringInput,
+    run_monitoring,
+)
+
 from enum import (
     Enum,
     auto,
@@ -102,6 +109,8 @@ class PipelineStage(
     ATTRIBUTION = auto()
 
     STRESS_TESTING = auto()
+
+    MONITORING = auto()
 
     REPORTING = auto()
 
@@ -243,6 +252,8 @@ class PipelineConfig:
     run_attribution: bool = True
 
     run_stress_testing: bool = True
+
+    run_monitoring: bool = True
 
     run_reporting: bool = True
 
@@ -5683,6 +5694,7 @@ class InstitutionalPortfolioReportBuilder:
         analytics_result=None,
         attribution_result=None,
         stress_result=None,
+        monitoring_result=None,
     ) -> (InstitutionalPortfolioConstructionReport):
 
         portfolio_obj = None
@@ -5780,7 +5792,7 @@ class InstitutionalPortfolioReportBuilder:
                 "analytics": analytics_result,
                 "attribution": attribution_result,
                 "stress_testing": stress_result,
-                # "monitoring": monitoring_result,
+                "monitoring": monitoring_result,
                 "execution": execution_obj,
             },
         )
@@ -5835,6 +5847,7 @@ class PortfolioReportStage:
         analytics_result: Any = None,
         attribution_result: Any = None,
         stress_result: Any = None,
+        monitoring_result: Any = None,
     ) -> PipelineStageOutput:
 
         start = (
@@ -5877,6 +5890,7 @@ class PortfolioReportStage:
                     analytics_result = analytics_result,
                     attribution_result = attribution_result,
                     stress_result = stress_result,
+                    monitoring_result=monitoring_result,
                 )
             )
 
@@ -5963,6 +5977,7 @@ def run_report_stage(
     analytics_result: Any = None,
     attribution_result: Any = None,
     stress_result: Any = None,
+    monitoring_result: Any = None,
 ) -> PipelineStageOutput:
     
     """
@@ -5983,6 +5998,7 @@ def run_report_stage(
             analytics_result = analytics_result,
             attribution_result = attribution_result,
             stress_result = stress_result,
+            monitoring_result=monitoring_result,    
         )
     )
 
@@ -8060,6 +8076,275 @@ class InstitutionalPortfolioPipeline:
             return None
 
     # --------------------------------------------------------
+    # MONITORING
+    # --------------------------------------------------------
+
+    def run_monitoring_stage(
+        self,
+        *,
+        context: PipelineContext,
+        inputs: PipelineInput,
+        portfolio_output: PortfolioBuildStageOutput | None,
+        analytics_result: Any = None,
+        attribution_result: Any = None,
+        stress_result: Any = None,
+    ) -> Any:
+
+        if not self.config.run_monitoring:
+            logger.warning(
+                "Monitoring stage DISABLED | "
+                "run_monitoring=%r",
+                self.config.run_monitoring,
+            )
+            return None
+
+        logger.info(
+            "Monitoring stage ENABLED | "
+            "run_monitoring=%r",
+            self.config.run_monitoring,
+        )
+
+        start = time.perf_counter()
+
+        try:
+
+            # ----------------------------------
+            # Runtime
+            # ----------------------------------
+
+            runtime_metrics = {
+                "runtime_seconds": (
+                    float(
+                        context.shared_objects.get(
+                            "runtime_seconds",
+                            0.0,
+                        )
+                    )
+                ),
+            }
+
+            # ----------------------------------
+            # Health
+            # ----------------------------------
+
+            component_health = {
+                "portfolio_available": (
+                    portfolio_output is not None
+                    and portfolio_output.result is not None
+                ),
+                "analytics_available": (
+                    analytics_result is not None
+                ),
+                "attribution_available": (
+                    attribution_result is not None
+                ),
+                "stress_testing_available": (
+                    stress_result is not None
+                ),
+            }
+
+            # ----------------------------------
+            # Compliance context
+            # ----------------------------------
+
+            compliance_context = {}
+
+            if portfolio_output is not None:
+                portfolio_result = (
+                    portfolio_output.result
+                )
+
+                if portfolio_result is not None:
+
+                    weights = (
+                        getattr(
+                            portfolio_result,
+                            "weights",
+                            None,
+                        )
+                    )
+
+                    if (
+                        isinstance(
+                            weights,
+                            pd.Series,
+                        )
+                        and not weights.empty
+                    ):
+
+                        abs_weights = (
+                            weights.abs()
+                        )
+
+                        total_weight = float(
+                            abs_weights.sum()
+                        )
+
+                        normalized_weights = (
+                            abs_weights / total_weight
+                            if total_weight > 0
+                            else abs_weights
+                        )
+
+                        compliance_context[
+                            "max_weight"
+                        ] = float(
+                            normalized_weights.max()
+                        )
+
+                        compliance_context[
+                            "hhi"
+                        ] = float(
+                            (
+                                normalized_weights
+                                ** 2
+                            ).sum()
+                        )
+
+            # ----------------------------------
+            # Portfolio exposure
+            # ----------------------------------
+
+            if analytics_result is not None:
+
+                exposure = getattr(
+                    analytics_result,
+                    "exposure_analytics",
+                    None,
+                )
+
+                if exposure is not None:
+
+                    compliance_context[
+                        "gross_exposure"
+                    ] = float(
+                        getattr(
+                            exposure,
+                            "gross_exposure",
+                            0.0,
+                        )
+                    )
+
+            # ----------------------------------
+            # Liquidity
+            # ----------------------------------
+
+            if analytics_result is not None:
+
+                capacity = getattr(
+                    analytics_result,
+                    "capacity_analytics",
+                    None,
+                )
+
+                if capacity is not None:
+
+                    compliance_context[
+                        "liquidity_score"
+                    ] = float(
+                        getattr(
+                            capacity,
+                            "liquidity_score",
+                            1.0,
+                        )
+                    )
+
+            # ----------------------------------
+            # Monitoring metadata
+            # ----------------------------------
+
+            metadata = MonitoringMetadata.create(
+                platform_name=(
+                    getattr(
+                        self.metadata,
+                        "strategy_name",
+                        None,
+                    )
+                    or "Institutional Quant Platform"
+                ),
+                environment="production",
+                owner="QuantResearch",
+            )
+
+            # ----------------------------------
+            # Monitoring input
+            # ----------------------------------
+
+            monitoring_input = MonitoringInput(
+                runtime_metrics=runtime_metrics,
+                component_health=component_health,
+                compliance_context=compliance_context,
+            )
+
+            # ----------------------------------
+            # Monitoring config
+            # ----------------------------------
+
+            monitoring_config = MonitoringConfig()
+
+            # ----------------------------------
+            # Execute monitoring
+            # ----------------------------------
+
+            result = run_monitoring(
+                metadata=metadata,
+                monitoring_input=monitoring_input,
+                config=monitoring_config,
+            )
+
+            if result is None:
+                raise RuntimeError(
+                    "Monitoring engine returned None."
+                )
+
+            logger.info(
+                "Monitoring stage completed successfully | "
+                "result_type=%s",
+                type(result).__name__,
+            )
+
+            context.shared_objects[
+                "monitoring_result"
+            ] = result
+
+            context.shared_objects[
+                "monitoring_error"
+            ] = None
+
+            context.shared_objects[
+                "monitoring_runtime_seconds"
+            ] = (
+                time.perf_counter()
+                - start
+            )
+
+            return result
+
+        except Exception as exc:
+
+            logger.exception(
+                "Monitoring stage failed: %s",
+                exc,
+            )
+
+            context.shared_objects[
+                "monitoring_error"
+            ] = {
+                "stage": "monitoring",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
+
+            context.shared_objects[
+                "monitoring_runtime_seconds"
+            ] = (
+                time.perf_counter()
+                - start
+            )
+
+            return None
+
+    # --------------------------------------------------------
     # DIAGNOSTICS
     # --------------------------------------------------------
 
@@ -8341,6 +8626,23 @@ class InstitutionalPortfolioPipeline:
         ] = stress_result
 
         # ----------------------------------------------------
+        # MONITORING
+        # ----------------------------------------------------
+
+        monitoring_result = self.run_monitoring_stage(
+            context=context,
+            inputs=inputs,
+            portfolio_output=portfolio_output,
+            analytics_result=analytics_result,
+            attribution_result=attribution_result,
+            stress_result=stress_result,
+        )
+
+        context.shared_objects[
+            "monitoring_result"
+        ] = monitoring_result
+
+        # ----------------------------------------------------
         # DIAGNOSTICS
         # ----------------------------------------------------
 
@@ -8372,6 +8674,7 @@ class InstitutionalPortfolioPipeline:
             analytics_result=analytics_result,
             attribution_result=attribution_result,
             stress_result=stress_result,
+            monitoring_result=monitoring_result,
         )
 
         # ----------------------------------------------------
