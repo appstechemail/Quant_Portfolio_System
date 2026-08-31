@@ -5879,6 +5879,9 @@ class PortfolioReportStage:
 
                     diagnostics_result=
                     diagnostics_output,
+
+                    analytics_result=
+                    analytics_result,
                 )
             )
 
