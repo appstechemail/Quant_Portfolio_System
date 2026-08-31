@@ -5815,37 +5815,15 @@ class PortfolioReportStage:
     def run(
         self,
         *,
-        forecast_output:
-        ForecastStageOutput
-        | None,
-
-        risk_output:
-        RiskStageOutput
-        | None,
-
-        constraint_output:
-        ConstraintStageOutput
-        | None,
-
-        optimization_output:
-        OptimizationStageOutput
-        | None,
-
-        portfolio_output:
-        PortfolioBuildStageOutput
-        | None,
-
-        rebalance_output:
-        RebalanceStageOutput
-        | None,
-
-        execution_output:
-        ExecutionStageOutput
-        | None,
-
-        diagnostics_output:
-        DiagnosticsStageOutput
-        | None,
+        forecast_output: ForecastStageOutput | None,
+        risk_output: RiskStageOutput | None,
+        constraint_output: ConstraintStageOutput | None,
+        optimization_output: OptimizationStageOutput | None,
+        portfolio_output: PortfolioBuildStageOutput | None,
+        rebalance_output: RebalanceStageOutput | None,
+        execution_output: ExecutionStageOutput | None,
+        diagnostics_output: DiagnosticsStageOutput | None,
+        analytics_result: Any = None,
     ) -> PipelineStageOutput:
 
         start = (
@@ -5972,47 +5950,21 @@ class PortfolioReportStageFactory:
 # CONTEXT INTEGRATION
 # ============================================================
 
-
 def run_report_stage(
     *,
-    context:
-    PipelineContext,
-
-    stage:
-    PortfolioReportStage,
-
-    forecast_output:
-    ForecastStageOutput
-    | None,
-
-    risk_output:
-    RiskStageOutput
-    | None,
-
-    constraint_output:
-    ConstraintStageOutput
-    | None,
-
-    optimization_output:
-    OptimizationStageOutput
-    | None,
-
-    portfolio_output:
-    PortfolioBuildStageOutput
-    | None,
-
-    rebalance_output:
-    RebalanceStageOutput
-    | None,
-
-    execution_output:
-    ExecutionStageOutput
-    | None,
-
-    diagnostics_output:
-    DiagnosticsStageOutput
-    | None,
+    context: PipelineContext,
+    stage: PortfolioReportStage,
+    forecast_output: ForecastStageOutput | None,
+    risk_output: RiskStageOutput | None,
+    constraint_output: ConstraintStageOutput | None,
+    optimization_output: OptimizationStageOutput | None,
+    portfolio_output: PortfolioBuildStageOutput | None,
+    rebalance_output: RebalanceStageOutput | None,
+    execution_output: ExecutionStageOutput | None,
+    diagnostics_output: DiagnosticsStageOutput | None,
+    analytics_result: Any = None,
 ) -> PipelineStageOutput:
+    
     """
     Execute reporting stage.
     """
@@ -7398,45 +7350,18 @@ class InstitutionalPortfolioPipeline:
     def run_report_stage(
         self,
         *,
-        context:
-        PipelineContext,
-
-        forecast_output:
-        ForecastStageOutput
-        | None,
-
-        risk_output:
-        RiskStageOutput
-        | None,
-
-        constraint_output:
-        ConstraintStageOutput
-        | None,
-
-        optimization_output:
-        OptimizationStageOutput
-        | None,
-
-        portfolio_output:
-        PortfolioBuildStageOutput
-        | None,
-
-        rebalance_output:
-        RebalanceStageOutput
-        | None,
-
-        execution_output:
-        ExecutionStageOutput
-        | None,
-
-        diagnostics_output:
-        DiagnosticsStageOutput
-        | None,
-    ) -> (
-        PipelineStageOutput
-        | None
-    ):
-
+        context: PipelineContext,
+        forecast_output: ForecastStageOutput | None,
+        risk_output: RiskStageOutput | None,
+        constraint_output: ConstraintStageOutput | None,
+        optimization_output: OptimizationStageOutput | None,
+        portfolio_output: PortfolioBuildStageOutput | None,
+        rebalance_output: RebalanceStageOutput | None,
+        execution_output: ExecutionStageOutput | None,
+        diagnostics_output: DiagnosticsStageOutput | None,
+        analytics_result: Any = None,
+    ) -> PipelineStageOutput | None:
+        
         if not (
             self.config
             .run_reporting
@@ -7452,36 +7377,17 @@ class InstitutionalPortfolioPipeline:
 
         return (
             run_report_stage(
-
-                context=
-                context,
-
-                stage=
-                stage,
-
-                forecast_output=
-                forecast_output,
-
-                risk_output=
-                risk_output,
-
-                constraint_output=
-                constraint_output,
-
-                optimization_output=
-                optimization_output,
-
-                portfolio_output=
-                portfolio_output,
-
-                rebalance_output=
-                rebalance_output,
-
-                execution_output=
-                execution_output,
-
-                diagnostics_output=
-                diagnostics_output,
+                context=context,
+                stage=stage,
+                forecast_output=forecast_output,
+                risk_output=risk_output,
+                constraint_output=constraint_output,
+                optimization_output=optimization_output,
+                portfolio_output=portfolio_output,
+                rebalance_output=rebalance_output,
+                execution_output=execution_output,
+                diagnostics_output=diagnostics_output,
+                analytics_result=analytics_result,
             )
         )
 
@@ -7633,6 +7539,7 @@ class InstitutionalPortfolioPipeline:
             rebalance_output=rebalance_output,
             execution_output=execution_output,
             diagnostics_output=diagnostics_output,
+            analytics_result=analytics_result,
         )
 
         # ----------------------------------------------------
