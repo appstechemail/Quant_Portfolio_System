@@ -5998,6 +5998,9 @@ def run_report_stage(
 
             diagnostics_output=
             diagnostics_output,
+
+            analytics_result=
+            analytics_result,
         )
     )
 
