@@ -4859,7 +4859,7 @@ class AlertFactory:
                 if diagnostics is not None
                 else {}
             ),
-        )
+        )   
 
 
 # ============================================================
@@ -5021,15 +5021,9 @@ class AlertRouter:
     ) -> None:
 
         print(
-
             "[ALERT]",
-
-            alert.severity,
-
-            alert.category,
-
+            alert.level,
             alert.title,
-
             alert.message,
         )
 
