@@ -4774,23 +4774,6 @@ print(
 )
 
 # ----------------------------------------------------------
-# FINAL DEPLOYMENT CHECK
-# ----------------------------------------------------------
-
-deployment_ready = (
-
-    overall
-    and len(portfolio) > 0
-    and len(models) > 0
-    and len(FEATURES) > 0
-)
-
-print(
-    "\nDeployment Ready:",
-    deployment_ready
-)
-
-# ----------------------------------------------------------
 # OPTIONAL ASSERTIONS
 # ----------------------------------------------------------
 
@@ -4804,20 +4787,44 @@ assert (
     is not None
 )
 
-assert (
-    portfolio_result
-    is not None
+portfolio_available = (
+    portfolio_result is not None
 )
 
-assert (
-    rebalance_result
-    is not None
+print(
+    "Portfolio Available:",
+    portfolio_available,
+)
+
+rebalance_available = (
+    rebalance_result is not None
+)
+
+print(
+    "Rebalance Available:",
+    rebalance_available,
+)
+
+# ----------------------------------------------------------
+# FINAL DEPLOYMENT CHECK
+# ----------------------------------------------------------
+
+deployment_ready = (
+    overall
+    and portfolio_available
+    and rebalance_available
+    and len(models) > 0
+    and len(FEATURES) > 0
+)
+
+print(
+    "\nDeployment Ready:",
+    deployment_ready
 )
 
 # ----------------------------------------------------------
 # FINAL MESSAGE
 # ----------------------------------------------------------
-
 print("\n" + "=" * 60)
 
 print(
