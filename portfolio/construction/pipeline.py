@@ -5998,7 +5998,7 @@ def run_report_stage(
             analytics_result = analytics_result,
             attribution_result = attribution_result,
             stress_result = stress_result,
-            monitoring_result=monitoring_result,    
+            monitoring_result = monitoring_result,    
         )
     )
 
@@ -8441,6 +8441,7 @@ class InstitutionalPortfolioPipeline:
         analytics_result: Any = None,
         attribution_result: Any = None,
         stress_result: Any = None,
+        monitoring_result: Any = None,
     ) -> PipelineStageOutput | None:
         
         if not (
@@ -8472,6 +8473,7 @@ class InstitutionalPortfolioPipeline:
                 analytics_result=analytics_result,
                 attribution_result=attribution_result,
                 stress_result=stress_result,
+                monitoring_result = monitoring_result,                                        
             )
         )
 
@@ -8887,18 +8889,10 @@ def run_pipeline(
 
     return (
         pipeline.run(
-
-            inputs=
-            inputs,
-
-            analytics_result=
-            analytics_result,
-
-            attribution_result=
-            attribution_result,
-
-            stress_result=
-            stress_result,
+            inputs = inputs,
+            analytics_result = analytics_result,
+            attribution_result = attribution_result,
+            stress_result = stress_result,
         )
     )
 
