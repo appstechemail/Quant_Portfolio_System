@@ -4817,54 +4817,46 @@ class AlertFactory:
     @staticmethod
     def create(
         *,
-        category:
-        MonitoringCategory,
-
-        severity:
-        MonitoringSeverity,
-
+        category: MonitoringCategory,
+        severity: MonitoringSeverity,
         title: str,
-
         message: str,
-
         source: str,
-
-        diagnostics:
-        dict[str, Any]
-        | None = None,
+        diagnostics: dict[str, Any] | None = None,
     ) -> AlertRecord:
+
+        # Map MonitoringSeverity -> AlertLevel
+        severity_to_level = {
+            MonitoringSeverity.LOW: AlertLevel.INFO,
+            MonitoringSeverity.MEDIUM: AlertLevel.WARNING,
+            MonitoringSeverity.HIGH: AlertLevel.ERROR,
+            MonitoringSeverity.CRITICAL: AlertLevel.CRITICAL,
+        }
 
         return AlertRecord(
 
-            alert_id=
-            str(
+            alert_id=str(
                 uuid.uuid4()
             ),
 
-            timestamp=
-            datetime.now(
+            created_at=datetime.now(
                 UTC
             ),
 
-            category=
-            category,
+            level=severity_to_level.get(
+                severity,
+                AlertLevel.WARNING,
+            ),
 
-            severity=
-            severity,
+            title=title,
 
-            title=
-            title,
+            message=message,
 
-            message=
-            message,
+            source_component=source,
 
-            source=
-            source,
-
-            diagnostics=(
+            metadata=(
                 diagnostics
-                if diagnostics
-                is not None
+                if diagnostics is not None
                 else {}
             ),
         )
